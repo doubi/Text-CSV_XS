@@ -1,3 +1,8 @@
+1998-07-20  Jochen Wiedmann  <joe@ispsoft.de> (0.13)
+
+	* CSV_XS.xs (Encode): Strings qre quoted only if required. 
+	* CSV_XS.xs: Added support for $csv->{types}.
+
 1998-06-11  Jochen Wiedmann  <joe@ispsoft.de> (0.12)
 
 	* CSV_XS.xs (Encode): Integers and Reals are no longer quoted.

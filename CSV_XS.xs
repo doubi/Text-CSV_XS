@@ -5,20 +5,16 @@
  *  modify it under the same terms as Perl itself.
  *
  *
- ***************************************************************************
- *
- *  HISTORY
- *
- *  Written by:
- *     Jochen Wiedmann <joe@ispsoft.de>
- *
- *  Version 0.10  03-May-1998  Initial version
- *
  **************************************************************************/
 
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
+
+
+#define CSV_XS_TYPE_PV 0
+#define CSV_XS_TYPE_IV 1
+#define CSV_XS_TYPE_NV 2
 
 
 typedef struct {
@@ -33,7 +29,8 @@ typedef struct {
     char* bptr;
     int useIO;
     SV* tmp;
-    AV* types;
+    char* types;
+    STRLEN types_len;
 } csv_t;
 
 
@@ -67,12 +64,10 @@ static void SetupCsv(csv_t* csv, HV* self) {
 	}
     }
     csv->types = NULL;
-    if ((svp = hv_fetch(self, "types", 5, 0))  &&  *svp  &&  SvOK(*svp)  &&
-	SvROK(*svp)) {
-        SV* sv = SvRV(*svp);
-	if (SvOK(sv)  &&  SvTYPE(sv) == SVt_PVAV) {
-	    csv->types = (AV*) sv;
-	}
+    if ((svp = hv_fetch(self, "_types", 6, 0))  &&  *svp  &&  SvOK(*svp)) {
+        STRLEN len;
+        csv->types = SvPV(*svp, len);
+	csv->types_len = len;
     }
     csv->binary = 0;
     if ((svp = hv_fetch(self, "binary", 6, 0))  &&  *svp) {
@@ -128,7 +123,28 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 	if ((svp = av_fetch(fields, i, 0))  &&  *svp  &&  SvOK(*svp)) {
 	    STRLEN len;
 	    char* ptr = SvPV(*svp, len);
-	    int quoteMe = !SvIOK(*svp)  &&  !SvNOK(*svp)  &&  csv->quoteChar;
+	    int quoteMe;
+	    if ((quoteMe = (!SvIOK(*svp)  &&  !SvNOK(*svp)  &&
+			    csv->quoteChar))) {
+	        /*
+		 *  Do we need quoting? We do quote, if binary or blank
+		 *  characters are found and if the string contains
+		 *  quote or escape characters.
+		 */
+	        char* ptr2, *ptr3;
+		STRLEN l;
+		for (ptr2 = ptr, l = len;  l;  ++ptr2, --l) {
+		    unsigned char c = *ptr2;
+		    if (c <= 0x20  ||  (c >= 0x7f  &&  c <= 0xa0)  ||
+			(csv->quoteChar && c == csv->quoteChar)  ||
+			(csv->escapeChar  &&  c == csv->escapeChar)  ||
+			(c == csv->escapeChar)) {
+		        /* Binary character */
+			break;
+		    }
+		}
+		quoteMe = (l>0);
+	    }
 	    if (quoteMe) {
 	        CSV_PUT(csv, dst, csv->quoteChar);
 	    }
@@ -490,22 +506,20 @@ Decode(self, src, fields, useIO)
 	    csv.size = size;
 	}
 	ST(0) = (result = Decode(&csv, src, av)) ? &sv_yes : &sv_undef;
-	if (result) {
+        if (result  &&  csv.types) {
 	    I32 i, len = av_len(av);
 	    SV** svp;
 
-	    for (i = 0;  i <= len;  i++) {
+	    for (i = 0;  i <= len  &&  i <= csv.types_len;  i++) {
 	        if ((svp = av_fetch(av, i, 0))  &&  *svp  &&  SvOK(*svp)) {
-		    switch(looks_like_number(*svp)) {
-		      case 1:
-			sv_setiv(*svp, atol(SvPV(*svp, na)));
-			SvIOK_on(*svp);
-			break;
-		      case 2:
-			sv_setnv(*svp, atof(SvPV(*svp, na)));
-			SvNOK_on(*svp);
-			break;
-		    }
+                    switch (csv.types[i]) {
+                        case CSV_XS_TYPE_IV:
+                          sv_setiv(*svp, SvIV(*svp));
+                          break;
+                        case CSV_XS_TYPE_NV:
+                          sv_setnv(*svp, SvIV(*svp));
+                          break;
+                    }
 		}
 	    }
 	}
@@ -513,3 +527,62 @@ Decode(self, src, fields, useIO)
     }
 
 
+void
+types(self, types=NULL)
+    SV* self
+    SV* types
+  PROTOTYPE: $;$
+  PPCODE:
+    {
+	HV* hv;
+
+	if (!self  ||  !SvOK(self)  ||  !SvROK(self)
+	    ||  SvTYPE(SvRV(self)) != SVt_PVHV) {
+	    croak("self is not a hash ref");
+	}
+	hv = (HV*) SvRV(self);
+
+        if (items == 1) {
+	    SV** svp = hv_fetch(hv, "types", 5, 0);
+            ST(0) = svp ? *svp : &sv_undef;
+        } else if (!SvOK(types)) {
+            hv_delete(hv, "types", 5, G_DISCARD);
+            hv_delete(hv, "_types", 6, G_DISCARD);
+            ST(0) = &sv_undef;
+        } else {
+	    AV* av;
+            IV len, i;
+            SV* t_array;
+            char* ptr;
+
+            if (!SvROK(types)  ||  SvTYPE(SvRV(types)) != SVt_PVAV) {
+                croak("types: Expected ARRAYREF");
+            }
+            av = (AV*) SvRV(types);
+            if (!(len = av_len(av)+1)) {
+                hv_delete(hv, "types", 5, G_DISCARD);
+                hv_delete(hv, "_types", 6, G_DISCARD);
+                ST(0) = &sv_undef;
+            } else {
+                t_array = newSVpv("", 0);
+		SvGROW(t_array, len+1);
+		SvCUR_set(t_array, len);
+                if (!hv_store(hv, "_types", 6, t_array, 0)  ||
+		    !hv_store(hv, "types", 5, types, 0)) {
+                    ST(0) = &sv_undef;
+                    hv_delete(hv, "_types", 6, G_DISCARD);
+                } else {
+		    SvREFCNT_inc(types); /* For hv_store */
+                    ptr = SvPVX(t_array);
+                    for (i = 0;  i < len;  i++) {
+                        SV** svp = av_fetch(av, i, 0);
+                        *ptr++ = (svp && *svp && SvOK(*svp) && SvIOK(*svp))
+			  ? SvIV(*svp) : 0;
+                    }
+		    *ptr++ = '\0';
+		    ST(0) = types;  /*  No sv_2mortal, because input arg  */
+                }
+            }
+        }
+        XSRETURN(1);
+    }

@@ -6,9 +6,11 @@ Description:
     fields into a CSV string and parse a CSV string into fields.
 
 Copying:
-    Copyright (c) 1997 Alan Citterman. All rights reserved.  This program is
-    free software; you can redistribute it and/or modify it under the same
-    terms as Perl itself.
+    Copyright (c) 1998 Jochen Wiedmann. All rights reserved.
+    Portions Copyright (c) 1997 Alan Citterman. All rights reserved.
+
+    This program is free software; you can redistribute it and/or modify
+    it under the same terms as Perl itself.
 
 Prerequisites:
     perl 5.002
@@ -20,13 +22,7 @@ Build/Installation:
 	make test
 	make install
 
-Recent Changes:
-    Version 0.01  06/05/1997
-	original version
-
-Planned Enhancements:
-    + extend constructor to accept parse() configuration to support other
-      variations of CSV
-
 Author:
-    Alan Citterman <alan@mfgrtl.com>
+    Jochen Wiedmann <joe@ispsoft.de>
+
+    Interface design by Alan Citterman <alan@mfgrtl.com>

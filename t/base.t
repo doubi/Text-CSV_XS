@@ -27,6 +27,11 @@ sub Test($) {
 package Empty_Subclass;
 @Empty_Subclass::ISA = qw(Text::CSV_XS);
 package main;
+
+#
+#    Important: Do not modify these tests unless you have a good
+#    reason. This file ought to guarantee compatibility to Text::CSV.
+#
 my($empty) = Empty_Subclass->new();
 Test(ref($empty) eq 'Empty_Subclass')
     or printf("Expected subclass %s, got %s\n",
@@ -41,28 +46,32 @@ Test($empty->combine(''))
 
 my $csv = Text::CSV_XS->new();
 
+#
+#    Important: Do not modify these tests unless you have a good
+#    reason. This file ought to guarantee compatibility to Text::CSV.
+#
 Test(!$csv->combine())  # fail - missing argument
     or print "Missing argument, but no failure\n";
 Test(!$csv->combine('abc', "def\n", 'ghi'))  # fail - bad character
     or print "Bad character, but no failure\n";
-Test($csv->combine('') && ($csv->string eq q("")))  # succeed
-    or printf("Expected %s, got %s\n", q(""), $csv->string());
-Test($csv->combine('', '') && ($csv->string eq q("","")))  # succeed
+Test($csv->combine('') && ($csv->string eq q()))  # succeed
+    or printf("Expected %s, got %s\n", q(), $csv->string());
+Test($csv->combine('', ' ') && ($csv->string eq q(," ")))  # succeed
     or printf("Expected %s, got %s\n", q("",""), $csv->string());
 Test($csv->combine('', 'I said, "Hi!"', '') &&
-     ($csv->string eq q("","I said, ""Hi!""","")))  # succeed
+     ($csv->string eq q(,"I said, ""Hi!""",)))  # succeed
     or printf("Expected %s, got %s\n", q("","I said, ""Hi!""",""),
 	      $csv->string());
-Test($csv->combine('"', 'abc') && ($csv->string eq q("""","abc")))  # succeed
+Test($csv->combine('"', 'abc') && ($csv->string eq q("""",abc)))  # succeed
     or printf("Expected %s, got %s\n", q("""","abc"), $csv->string());
-Test($csv->combine('abc', '"') && ($csv->string eq q("abc","""")))  # succeed
+Test($csv->combine('abc', '"') && ($csv->string eq q(abc,"""")))  # succeed
     or printf("Expected %s, got %s\n", q("abc",""""), $csv->string());
 Test($csv->combine('abc', 'def', 'ghi') &&
-     ($csv->string eq q("abc","def","ghi")))  # succeed
+     ($csv->string eq q(abc,def,ghi)))  # succeed
     or printf("Expected %s, got %s\n", q("abc","def","ghi"),
 	      $csv->string());
 Test($csv->combine("abc\tdef", 'ghi') &&
-     ($csv->string eq qq("abc\tdef","ghi")))  # succeed
+     ($csv->string eq qq("abc\tdef",ghi)))  # succeed
     or printf("Expected %s, got %s\n", qq("abc\tdef","ghi"),
 	      $csv->string());
 Test(!$csv->parse())
@@ -94,6 +103,10 @@ Test($csv->status())
 
 
 # Are Integers and Reals quoted?
-Test($csv->combine('', 2, 3.4, 'a')
-     && ($csv->string eq q("",2,3.4,"a")))  # succeed
+#
+#    Important: Do not modify these tests unless you have a good
+#    reason. This file ought to guarantee compatibility to Text::CSV.
+#
+Test($csv->combine('', 2, 3.4, 'a', 'a b')
+     && ($csv->string eq q(,2,3.4,a,"a b")))  # succeed
     or printf("Expected %s, got %s\n", q(""), $csv->string());

@@ -1,6 +1,9 @@
 package Text::CSV_XS;
 
-# Copyright (c) 1997 Alan Citterman. All rights reserved.
+# Copyright (c) 1998 Jochen Wiedmann. All rights reserved.
+#
+# Portions Copyright (c) 1997 Alan Citterman. All rights reserved.
+#
 # This program is free software; you can redistribute it and/or
 # modify it under the same terms as Perl itself.
 
@@ -8,6 +11,9 @@ package Text::CSV_XS;
 # HISTORY
 #
 # Written by:
+#    Jochen Wiedmann <joe@ispsoft.de>
+#
+# Based on Text::CSV by:
 #    Alan Citterman <alan@mfgrtl.com>
 #
 # Version 0.01  06/05/1997
@@ -31,10 +37,17 @@ require 5.004;
 use strict;
 
 require DynaLoader;
-use vars qw($VERSION @ISA);
+require Exporter;
 
-$VERSION =     '0.12';
-@ISA =         qw(DynaLoader);
+use vars qw($VERSION @ISA @EXPORT_OK);
+
+$VERSION =     '0.13';
+@ISA =         qw(Exporter DynaLoader);
+@EXPORT_OK = qw(IV PV NV);
+
+sub PV () { 0 }
+sub IV () { 1 }
+sub NV () { 2 }
 
 
 ############################################################################
@@ -75,6 +88,9 @@ sub new ($;$) {
 	'eol'          => exists($attr->{'eol'}) ? $attr->{'eol'} : ''
     };
     bless $self, $class;
+    if (exists($attr->{'types'})) {
+	my $result = $self->types($attr->{'types'});
+    }
     $self;
 }
 
@@ -271,11 +287,10 @@ __END__
 
 Text::CSV_XS - comma-separated values manipulation routines
 
+
 =head1 SYNOPSIS
 
  use Text::CSV_XS;
-
- $version = Text::CSV_XS->version();   # get the module version
 
  $csv = Text::CSV_XS->new();           # create a new object
  $csv = Text::CSV_XS->new(\%attr);     # create a new object
@@ -295,6 +310,8 @@ Text::CSV_XS - comma-separated values manipulation routines
  $columns = $csv->getline($io);        # Read a line from file $io, parse it
                                        # and return an array ref of fields
 
+ $csv->types(\@t_array);               # Set column types
+
 
 =head1 DESCRIPTION
 
@@ -302,26 +319,20 @@ Text::CSV_XS provides facilities for the composition and decomposition of
 comma-separated values.  An instance of the Text::CSV_XS class can combine
 fields into a CSV string and parse a CSV string into fields.
 
+
 =head1 FUNCTIONS
 
 =over 4
 
-=item version
+=item version()
 
- $version = Text::CSV_XS->version();
+(Class method) Returns the current module version.
 
-This function may be called as a class or an object method.  It returns the current
-module version.
+=item new(\%attr)
 
-=item new
-
- $csv = Text::CSV_XS->new();
- $csv = Text::CSV_XS->new(\%attr);
-
-This function may be called as a class or an object method.  It returns a
-reference to a newly created Text::CSV_XS object. The optional argument
-I<$attr> is a hash ref of attributes that modify the objects parsing
-rules. Currently the following attributes are available:
+(Class method) Returns a new instance of Text::CSV_XS. The objects
+attributes are described by the (optional) hash ref C<\%attr>.
+Currently the following attributes are available:
 
 =over 8
 
@@ -351,6 +362,13 @@ The char used for separating fields, by default a comme. (C<,>)
 If this attribute is TRUE, you may use binary characters in quoted fields,
 including line feeds, carriage returns and NUL bytes. (The latter must
 be escaped as C<"0>.) By default this feature is off.
+
+=item types
+
+A set of column types; this attribute is immediately passed to the
+I<types> method below. You must not set this attribute otherwise,
+except for using the I<types> method. For details see the description
+of the I<types> method below.
 
 =back
 
@@ -417,6 +435,9 @@ be called to retrieve the decomposed fields .  Upon failure, the value
 returned by C<fields()> is undefined and C<error_input()> can be called
 to retrieve the invalid argument.
 
+You may use the I<types()> method for setting column types. See the
+description below.
+
 =item getline
 
  $columns = $csv->getline($io);
@@ -425,6 +446,30 @@ This is the counterpart to print, like parse is the counterpart to
 combine: It reads a row from the IO object $io using $io->getline()
 and parses this row into an array ref. This array ref is returned
 by the function or undef for failure.
+
+=item types
+
+ $csv->types(\@tref);
+
+This method is used to force that columns are of a given type. For
+example, if you have an integer column, two double columns and a
+string column, then you might do a
+
+ $csv->types([Text::CSV_XS::IV(),
+              Text::CSV_XS::NV(),
+              Text::CSV_XS::NV(),
+              Text::CSV_XS::PV()]);
+
+Column types are used only for decoding columns, in other words
+by the I<parse()> and I<getline()> methods.
+
+You can unset column types by doing a
+
+ $csv->types(undef);
+
+or fetch the current type settings with
+
+ $types = $csv->types();
 
 =item fields
 
@@ -519,6 +564,8 @@ A CSV string may be terminated by 0x0A (line feed) or by 0x0D,0x0A
 =head1 AUTHOR
 
 Alan Citterman F<E<lt>alan@mfgrtl.comE<gt>> wrote the original Perl
+module. Please don't send mail concerning Text::CSV_XS to Alan, as
+he's not involved in the C part which is now the main part of the
 module.
 
 Jochen Wiedmann F<E<lt>joe@ispsoft.deE<gt>> rewrote the encoding and

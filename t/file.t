@@ -176,15 +176,16 @@ Test($csv->print($fh, [" 4", "Andreas König"]));
 Test($csv->print($fh, [5]));
 my $contents;
 Test(($contents = $fh->Contents()) eq <<"CONTENTS");
-"id","name"\015
+id,name\015
 1,"Alligator Descartes"\015
-"3","Jochen Wiedmann"\015
+3,"Jochen Wiedmann"\015
 2,"Tim Bunce"\015
 " 4","Andreas König"\015
 5\015
 CONTENTS
 
 my $fields;
+print "Retrieving data\n";
 for (my $i = 0;  $i < 6;  $i++) {
     Test($fields = $csv->getline($fh))
 	and print "Row $i: $fields (@$fields)\n";

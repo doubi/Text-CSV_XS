@@ -22,7 +22,7 @@ my(@binFields) = ("abc\0def\n\rghi", "ab\"ce,\032\"'", "\377");
 my($csv) = Text::CSV_XS->new({'binary' => 1});
 Test($csv->combine(@binFields)) or print "Failed to encode binary fields\n";
 my($string) = $csv->string();
-Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'","\377"))
+Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'",\377))
     or printf("Encode: Expected \n%s\n, got \n%s\n",
              unpack("H*", qq("abc"0def\n\rghi","ab""ce,\032""'")),
              unpack("H*", $string));
@@ -40,14 +40,14 @@ Test(($csv->fields())[2] eq $binFields[2])
 $csv->{'eol'} = "\r\n";
 Test($csv->combine(@binFields)) or print "Failed to encode binary fields\n";
 $string = $csv->string();
-Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'","\377"\r\n))
+Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'",\377\r\n))
     or printf("Encode: Expected \n%s\n, got \n%s\n",
              unpack("H*", qq("abc"0def\n\rghi","ab""ce,\032""'")),
              unpack("H*", $string));
 $csv->{'eol'} = "\n";
 Test($csv->combine(@binFields)) or print "Failed to encode binary fields\n";
 $string = $csv->string();
-Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'","\377"\n))
+Test($string eq qq("abc"0def\n\rghi","ab""ce,\032""'",\377\n))
     or printf("Encode: Expected \n%s\n, got \n%s\n",
              unpack("H*", qq("abc"0def\n\rghi","ab""ce,\032""'")),
              unpack("H*", $string));
