@@ -1,0 +1,15 @@
+1998-05-12  Jochen Wiedmann  <joe@ispsoft.de> (0.11)
+
+	* Added $csv->{'eol'}
+
+	* Added $csv->{'quote_char'} = undef
+
+1998-05-05  Jochen Wiedmann  <joe@ispsoft.de> (0.10)
+
+	* Moved encoding and decoding to XS; added binary mode; added
+	  print() and getline() methods.
+
+1998-06-05  Alan Citterman  <alan@mfgrtl.com>
+
+	* Initial version
+
