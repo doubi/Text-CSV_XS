@@ -1,3 +1,7 @@
+1998-08-21  Jochen Wiedmann  <joe@ispsoft.de> (0.15)
+
+	* CSV_XS.pm: Moved print() and getline() to XS.
+
 1998-08-13  Jochen Wiedmann  <joe@ispsoft.de> (0.14)
 
 	* CSV_XS.xs: Forgot to escape sepchar; patched by Paul Walmsley,

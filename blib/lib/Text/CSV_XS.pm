@@ -62,19 +62,19 @@ sub new ($;$) {
     my($class) = ref($proto) || $proto;
     $attr ||= {};
     my($self) = {
-	'_STATUS'      => undef,
-	'_ERROR_INPUT' => undef,
-	'_STRING'      => undef,
-	'_FIELDS'      => undef,
-	'quote_char'   => $attr->{'quote_char'}  || '"',
-	'escape_char'  => $attr->{'escape_char'} || '"',
-	'sep_char'     => $attr->{'sep_char'}    || ',',
-	'binary'       => $attr->{'binary'}      || 0,
-	'eol'          => exists($attr->{'eol'}) ? $attr->{'eol'} : ''
+    '_STATUS'      => undef,
+    '_ERROR_INPUT' => undef,
+    '_STRING'      => undef,
+    '_FIELDS'      => undef,
+    'quote_char'   => $attr->{'quote_char'}  || '"',
+    'escape_char'  => $attr->{'escape_char'} || '"',
+    'sep_char'     => $attr->{'sep_char'}    || ',',
+    'binary'       => $attr->{'binary'}      || 0,
+    'eol'          => exists($attr->{'eol'}) ? $attr->{'eol'} : ''
     };
     bless $self, $class;
     if (exists($attr->{'types'})) {
-	my $result = $self->types($attr->{'types'});
+    my $result = $self->types($attr->{'types'});
     }
     $self;
 }
@@ -255,7 +255,7 @@ sub parse ($$) {
 #     $self->{'_STRING'} = undef;
 #     $self->{'_FIELDS'} = $fields;
 #     if ($self->{'_STATUS'} = $self->Decode($io, $fields, 1)) {
-# 	return $fields;
+#   return $fields;
 #     }
 #     return undef;
 # }
@@ -503,10 +503,10 @@ C<combine()> or C<parse()>, whichever was called more recently.
   }
 
   my @sample_input_fields = ('You said, "Hello!"',
-			     5.67,
-			     'Surely',
-			     '',
-			     '3.14159');
+                 5.67,
+                 'Surely',
+                 '',
+                 '3.14159');
   if ($csv->combine(@sample_input_fields)) {
     my $string = $csv->string;
     print $string, "\n";

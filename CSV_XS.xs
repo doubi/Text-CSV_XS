@@ -16,6 +16,13 @@
 #define CSV_XS_TYPE_IV 1
 #define CSV_XS_TYPE_NV 2
 
+#define CSV_XS_SELF                                 \
+    if (!self  ||  !SvOK(self)  ||  !SvROK(self)    \
+	||  SvTYPE(SvRV(self)) != SVt_PVHV) {       \
+        croak("self is not a hash ref");            \
+    }                                               \
+    hv = (HV*) SvRV(self);
+
 
 typedef struct {
     HV* self;
@@ -430,6 +437,50 @@ restart:
 }
 
 
+static int xsDecode(HV* hv, AV* av, SV* src, bool useIO) {
+    csv_t csv;
+    int result;
+
+    SetupCsv(&csv, hv);
+    if ((csv.useIO = useIO)) {
+        csv.tmp = NULL;
+	csv.size = 0;
+    } else {
+        STRLEN size;
+	csv.tmp = src;
+	csv.bptr = SvPV(src, size);
+	csv.size = size;
+    }
+    result = Decode(&csv, src, av);
+    if (result  &&  csv.types) {
+        I32 i, len = av_len(av);
+	SV** svp;
+
+	for (i = 0;  i <= len  &&  i <= csv.types_len;  i++) {
+	    if ((svp = av_fetch(av, i, 0))  &&  *svp  &&  SvOK(*svp)) {
+	        switch (csv.types[i]) {
+		case CSV_XS_TYPE_IV:
+		    sv_setiv(*svp, SvIV(*svp));
+		    break;
+		case CSV_XS_TYPE_NV:
+		    sv_setnv(*svp, SvIV(*svp));
+		    break;
+		}
+	    }
+	}
+    }
+    return result;
+}
+
+
+static int xsEncode(HV* hv, AV* av, SV* io, bool useIO, SV* eol) {
+    csv_t csv;
+    SetupCsv(&csv, hv);
+    csv.useIO = useIO;
+    return Encode(&csv, io, av, eol);
+}
+
+
 MODULE = Text::CSV_XS		PACKAGE = Text::CSV_XS
 
 PROTOTYPES: ENABLE
@@ -445,16 +496,10 @@ Encode(self, dst, fields, useIO, eol)
   PROTOTYPE: $$$$
   PPCODE:
     {
-        csv_t csv;
 	HV* hv;
 	AV* av;
 
-	if (!self  ||  !SvOK(self)  ||  !SvROK(self)
-	    ||  SvTYPE(SvRV(self)) != SVt_PVHV) {
-	    croak("self is not a hash ref");
-	} else {
-	    hv = (HV*) SvRV(self);
-	}
+        CSV_XS_SELF;
 	if (!fields  ||  !SvOK(fields)  ||  !SvROK(fields)
 	    ||  SvTYPE(SvRV(fields)) != SVt_PVAV) {
 	    croak("fields is not an array ref");
@@ -462,9 +507,7 @@ Encode(self, dst, fields, useIO, eol)
 	    av = (AV*) SvRV(fields);
 	}
 
-	SetupCsv(&csv, hv);
-        csv.useIO = useIO;
-	ST(0) = Encode(&csv, dst, av, eol) ? &sv_yes : &sv_undef;
+	ST(0) = xsEncode(hv, av, dst, useIO, eol) ? &sv_yes : &sv_undef;
 	XSRETURN(1);
     }
 
@@ -478,17 +521,11 @@ Decode(self, src, fields, useIO)
   PROTOTYPE: $$$$
   PPCODE:
     {
-        csv_t csv;
 	HV* hv;
 	AV* av;
 	int result;
 
-	if (!self  ||  !SvOK(self)  ||  !SvROK(self)
-	    ||  SvTYPE(SvRV(self)) != SVt_PVHV) {
-	    croak("self is not a hash ref");
-	} else {
-	    hv = (HV*) SvRV(self);
-	}
+        CSV_XS_SELF;
 	if (!fields  ||  !SvOK(fields)  ||  !SvROK(fields)
 	    ||  SvTYPE(SvRV(fields)) != SVt_PVAV) {
 	    croak("fields is not an array ref");
@@ -496,34 +533,7 @@ Decode(self, src, fields, useIO)
 	    av = (AV*) SvRV(fields);
 	}
 
-	SetupCsv(&csv, hv);
-	if ((csv.useIO = useIO)) {
-	    csv.tmp = NULL;
-	    csv.size = 0;
-	} else {
-	    STRLEN size;
-	    csv.tmp = src;
-	    csv.bptr = SvPV(src, size);
-	    csv.size = size;
-	}
-	ST(0) = (result = Decode(&csv, src, av)) ? &sv_yes : &sv_undef;
-        if (result  &&  csv.types) {
-	    I32 i, len = av_len(av);
-	    SV** svp;
-
-	    for (i = 0;  i <= len  &&  i <= csv.types_len;  i++) {
-	        if ((svp = av_fetch(av, i, 0))  &&  *svp  &&  SvOK(*svp)) {
-                    switch (csv.types[i]) {
-                        case CSV_XS_TYPE_IV:
-                          sv_setiv(*svp, SvIV(*svp));
-                          break;
-                        case CSV_XS_TYPE_NV:
-                          sv_setnv(*svp, SvIV(*svp));
-                          break;
-                    }
-		}
-	    }
-	}
+	ST(0) = xsDecode(hv, av, src, useIO) ? &sv_yes : &sv_no;
 	XSRETURN(1);
     }
 
@@ -537,12 +547,7 @@ types(self, types=NULL)
     {
 	HV* hv;
 
-	if (!self  ||  !SvOK(self)  ||  !SvROK(self)
-	    ||  SvTYPE(SvRV(self)) != SVt_PVHV) {
-	    croak("self is not a hash ref");
-	}
-	hv = (HV*) SvRV(self);
-
+        CSV_XS_SELF;
         if (items == 1) {
 	    SV** svp = hv_fetch(hv, "types", 5, 0);
             ST(0) = svp ? *svp : &sv_undef;
@@ -586,4 +591,53 @@ types(self, types=NULL)
             }
         }
         XSRETURN(1);
+    }
+
+
+void
+print(self, io, fields)
+    SV* self
+    SV* io
+    SV* fields
+  PROTOTYPE: $$$
+  PPCODE:
+    {
+	HV* hv;
+	AV* av;
+	SV* eol;
+	SV** svp;
+
+        CSV_XS_SELF;
+	if (!fields  ||  !SvOK(fields)  ||  !SvROK(fields)  ||
+	    SvTYPE(SvRV(fields)) != SVt_PVAV) {
+	    croak("Expected fields to be an array ref");
+	}
+	av = (AV*) SvRV(fields);
+	if ((svp = hv_fetch(hv, "eol", 3, FALSE))) {
+	    eol = *svp;
+	} else {
+	    eol = &sv_undef;
+	}
+	ST(0) = xsEncode(hv, av, io, 1, eol) ? &sv_yes : &sv_no;
+	XSRETURN(1);
+    }
+
+
+void
+getline(self, io)
+    SV* self
+    SV* io
+  PROTOTYPE: $;$
+  PPCODE:
+    {
+	HV* hv;
+	AV* av;
+	SV* rv;
+
+        CSV_XS_SELF;
+	hv_delete(hv, "_ERROR_INPUT", 12, G_DISCARD);
+	av = newAV();
+	ST(0) = xsDecode(hv, av, io, 1) ?
+	    sv_2mortal(newRV_noinc((SV*) av)) : &sv_undef;
+	XSRETURN(1);
     }

@@ -6,7 +6,7 @@ use strict;
 use vars qw($loaded);
 
 $| = 1;
-print "1..74\n";
+print "1..72\n";
 
 require Text::CSV_XS;
 
@@ -119,15 +119,16 @@ sub TestRead ($$@) {
     if (!$fh->print($input)  ||  !$fh->flush()) {
 	die "Error while creating input file: $!";
     }
-    Test($csv->getline($fh)) or print("Failed to read\n");
-    Test(@expected == $csv->fields())
+    my $fields = $csv->getline($fh);
+    Test($fields) or print("Failed to read\n");
+    Test(@expected == @$fields)
 	or printf("Expected %d fields, got %d\n",
 		  scalar(@expected), scalar($csv->fields()));
     my($i);
     for ($i = 0;  $i < @expected;  $i++) {
-	if ($expected[$i] ne ($csv->fields())[$i]) {
+	if ($expected[$i] ne $$fields[$i]) {
 	    printf("Field $i: Expected %s, got %s\n",
-		   $expected[$i], ($csv->fields())[$i]);
+		   $expected[$i], $$fields[$i]);
 	}
     }
 }
@@ -153,13 +154,9 @@ TestReadFailure($csv, '"ab"c"')
     or print("Bad character sequence, but no failure.\n");
 TestReadFailure($csv, qq("abc\nc"))
     or print("Bad character, but no failure.\n");
-Test(!$csv->status())
-    or print("Wrong status\n");
 TestRead($csv, q(","), ',');
 TestRead($csv, qq("","I said,\t""Hi!""",""),
 	 '', qq(I said,\t"Hi!"), '');
-Test($csv->status())
-    or print("Wrong status\n");
 
 
 # This test because of a problem with DBD::CSV
