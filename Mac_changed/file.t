@@ -172,16 +172,14 @@ Test($csv->print($fh, [2, "Tim Bunce"]));
 Test($csv->print($fh, [" 4", "Andreas König"]));
 Test($csv->print($fh, [5]));
 my $contents;
-my $c = <<CONTENTS;
-id,name
-1,"Alligator Descartes"
-3,"Jochen Wiedmann"
-2,"Tim Bunce"
-" 4","Andreas König"
-5
+Test(($contents = $fh->Contents()) eq <<"CONTENTS");
+id,name\015
+1,"Alligator Descartes"\015
+3,"Jochen Wiedmann"\015
+2,"Tim Bunce"\015
+" 4","Andreas König"\015
+5\015
 CONTENTS
-$c =~ s/\n/$csv->{eol}/g;
-Test(($contents = $fh->Contents()) eq $c);
 
 my $fields;
 print "Retrieving data\n";
