@@ -15,7 +15,7 @@ sub Test($) {
 }
 
 $| = 1;
-print "1..13\n";
+print "1..15\n";
 
 my(@binFields) = ("abc\0def\n\rghi", "ab\"ce,\032\"'", "\377");
 
@@ -56,7 +56,11 @@ Test($csv->combine("abc","def","ghi"));
 Test($csv->string() eq qq(abc,def,ghi\n));
 
 
-
-
-
-
+# Ken's test
+{
+    my $csv2 = Text::CSV_XS->new({'always_quote' => 1});
+    Test($csv2->combine("abc","def","ghi"));
+    Test($csv2->string() eq qq("abc","def","ghi"))
+	or printf("Expected %s, got %s.\n", qq("abc","def","ghi"),
+		  $csv2->string());
+}

@@ -26,7 +26,7 @@ use DynaLoader ();
 
 use vars qw($VERSION @ISA);
 
-$VERSION =     '0.16';
+$VERSION =     '0.17';
 @ISA =         qw(DynaLoader);
 
 
@@ -58,23 +58,16 @@ sub version {
 ############################################################################
 
 sub new ($;$) {
-    my($proto, $attr) = @_;
-    my($class) = ref($proto) || $proto;
-    $attr ||= {};
-    my($self) = {
-	'_STATUS'      => undef,
-	'_ERROR_INPUT' => undef,
-	'_STRING'      => undef,
-	'_FIELDS'      => undef,
-	'quote_char'   => $attr->{'quote_char'}  || '"',
-	'escape_char'  => $attr->{'escape_char'} || '"',
-	'sep_char'     => $attr->{'sep_char'}    || ',',
-	'binary'       => $attr->{'binary'}      || 0,
-	'eol'          => exists($attr->{'eol'}) ? $attr->{'eol'} : ''
-    };
+    my $proto = shift;  my $attr = shift || {};
+    my $class = ref($proto) || $proto;
+    my $self = { 'quote_char' => '"',
+		 'escape_char' => '"',
+		 'sep_char' => ',',
+		 'eol' => '',
+		 %$attr };
     bless $self, $class;
-    if (exists($attr->{'types'})) {
-	my $result = $self->types($attr->{'types'});
+    if (exists($self->{'types'})) {
+	$self->types($self->{'types'});
     }
     $self;
 }
@@ -263,6 +256,22 @@ sub parse ($$) {
 
 bootstrap Text::CSV_XS $VERSION;
 
+sub types {
+    my $self = shift;
+    if (@_) {
+	if (my $types = shift) {
+	    $self->{'_types'} = join("", map{ chr($_) } @$types);
+	    $self->{'types'} = $types;
+	} else {
+	    delete $self->{'types'};
+	    delete $self->{'_types'};
+	    undef;
+	}
+    } else {
+	$self->{'types'};
+    }
+}
+
 1;
 
 __END__
@@ -354,6 +363,14 @@ I<types> method below. You must not set this attribute otherwise,
 except for using the I<types> method. For details see the description
 of the I<types> method below.
 
+=item always_quote
+
+By default the generated fields are quoted only, if they need to, for
+example, if they contain the separator. If you set this attribute to
+a TRUE value, then all fields will be quoted. This is typically easier
+to handle in external applications. (Poor creatures who aren't using
+Text::CSV_XS. :-)
+
 =back
 
 To sum it up,
@@ -422,6 +439,7 @@ to retrieve the invalid argument.
 
 You may use the I<types()> method for setting column types. See the
 description below.
+
 
 =item getline
 

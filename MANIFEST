@@ -8,3 +8,4 @@ test.pl			Small benchmark script
 t/base.t		Base tests (combine and parse only)
 t/file.t		IO tests (print and getline)
 t/misc.t		Binary mode tests
+t/types.t		Tests for the "types" attribute.

@@ -1,4 +1,10 @@
-1999-02-11  Jochen Wiedmann  <joe@ispsoft.de>
+1999-03-04  Jochen Wiedmann  <joe@ispsoft.de> (0.17)
+
+	* CSV_XS.pm: Added always_quote attribute. 
+	  (Ken Williams <kwilliam@DigitalRiver.com>)
+	* The types method is now implemented in Perl.
+
+1999-02-11  Jochen Wiedmann  <joe@ispsoft.de> (0.16)
 
 	* CSV_XS.pm: PV, IV and NV are no longer exportable, so that I
 	  need not inherit from Exporter any longer. (This caused trying

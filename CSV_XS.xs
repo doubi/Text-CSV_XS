@@ -30,6 +30,7 @@ typedef struct {
     char escapeChar;
     char sepChar;
     int binary;
+    int alwaysQuote;
     char buffer[1024];
     STRLEN used;
     STRLEN size;
@@ -79,6 +80,10 @@ static void SetupCsv(csv_t* csv, HV* self) {
     csv->binary = 0;
     if ((svp = hv_fetch(self, "binary", 6, 0))  &&  *svp) {
         csv->binary = SvTRUE(*svp);
+    }
+    csv->alwaysQuote = 0;
+    if ((svp = hv_fetch(self, "always_quote", 12, 0))  &&  *svp) {
+        csv->alwaysQuote = SvTRUE(*svp);
     }
     csv->self = self;
     csv->used = 0;
@@ -130,14 +135,15 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 	if ((svp = av_fetch(fields, i, 0))  &&  *svp  &&  SvOK(*svp)) {
 	    STRLEN len;
 	    char* ptr = SvPV(*svp, len);
-	    int quoteMe;
-	    if ((quoteMe = (!SvIOK(*svp)  &&  !SvNOK(*svp)  &&
+	    int quoteMe = csv->alwaysQuote;
+	    /*
+	     *  Do we need quoting? We do quote, if the user requested
+	     *  (alwaysQuote), if binary or blank characters are found
+	     *  and if the string contains quote or escape characters.
+	     */
+	    if (!quoteMe  &&
+		(quoteMe = (!SvIOK(*svp)  &&  !SvNOK(*svp)  &&
 			    csv->quoteChar))) {
-	        /*
-		 *  Do we need quoting? We do quote, if binary or blank
-		 *  characters are found and if the string contains
-		 *  quote or escape characters.
-		 */
 	        char* ptr2, *ptr3;
 		STRLEN l;
 		for (ptr2 = ptr, l = len;  l;  ++ptr2, --l) {
@@ -541,62 +547,6 @@ Decode(self, src, fields, useIO)
 
 	ST(0) = xsDecode(hv, av, src, useIO) ? &sv_yes : &sv_no;
 	XSRETURN(1);
-    }
-
-
-void
-types(self, types=NULL)
-    SV* self
-    SV* types
-  PROTOTYPE: $;$
-  PPCODE:
-    {
-	HV* hv;
-
-        CSV_XS_SELF;
-        if (items == 1) {
-	    SV** svp = hv_fetch(hv, "types", 5, 0);
-            ST(0) = svp ? *svp : &sv_undef;
-        } else if (!SvOK(types)) {
-            hv_delete(hv, "types", 5, G_DISCARD);
-            hv_delete(hv, "_types", 6, G_DISCARD);
-            ST(0) = &sv_undef;
-        } else {
-	    AV* av;
-            IV len, i;
-            SV* t_array;
-            char* ptr;
-
-            if (!SvROK(types)  ||  SvTYPE(SvRV(types)) != SVt_PVAV) {
-                croak("types: Expected ARRAYREF");
-            }
-            av = (AV*) SvRV(types);
-            if (!(len = av_len(av)+1)) {
-                hv_delete(hv, "types", 5, G_DISCARD);
-                hv_delete(hv, "_types", 6, G_DISCARD);
-                ST(0) = &sv_undef;
-            } else {
-                t_array = newSVpv("", 0);
-		SvGROW(t_array, len+1);
-		SvCUR_set(t_array, len);
-                if (!hv_store(hv, "_types", 6, t_array, 0)  ||
-		    !hv_store(hv, "types", 5, types, 0)) {
-                    ST(0) = &sv_undef;
-                    hv_delete(hv, "_types", 6, G_DISCARD);
-                } else {
-		    SvREFCNT_inc(types); /* For hv_store */
-                    ptr = SvPVX(t_array);
-                    for (i = 0;  i < len;  i++) {
-                        SV** svp = av_fetch(av, i, 0);
-                        *ptr++ = (svp && *svp && SvOK(*svp) && SvIOK(*svp))
-			  ? SvIV(*svp) : 0;
-                    }
-		    *ptr++ = '\0';
-		    ST(0) = types;  /*  No sv_2mortal, because input arg  */
-                }
-            }
-        }
-        XSRETURN(1);
     }
 
 
