@@ -26,7 +26,7 @@ use DynaLoader ();
 
 use vars qw($VERSION @ISA);
 
-$VERSION =     '0.20';
+$VERSION =     '0.21';
 @ISA =         qw(DynaLoader);
 
 
@@ -182,7 +182,7 @@ sub combine ($@) {
 sub parse ($$) {
   my($self, $str) = @_;
   my($fields) = [];
-  $self->{'STRING'} = $self->{'ERROR_INPUT'} = $str;
+  $self->{'_STRING'} = $self->{'ERROR_INPUT'} = $str;
   $self->{'_STATUS'} = 0;
   $self->{'_FIELDS'} = undef;
   if (defined($str)  &&  $self->Decode($str, $fields, 0)) {
