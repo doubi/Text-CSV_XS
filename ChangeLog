@@ -1,3 +1,8 @@
+2000-12-22  Jochen Wiedmann  <joe@ispsoft.de> (0.22)
+
+	* CSV_XS.xs: Added the handling of escape characters
+	  outside of quotes. Kirill Paliy <kpaliy@aaanet.ru>
+
 2000-08-18  Jochen Wiedmann  <joe@ispsoft.de> (0.21)
 
 	* CSV_XS.pm (parse): Minor bugfix in the parse method.
