@@ -172,7 +172,22 @@ Test($csv->print($fh, [2, "Tim Bunce"]));
 Test($csv->print($fh, [" 4", "Andreas König"]));
 Test($csv->print($fh, [5]));
 my $contents;
-Test(($contents = $fh->Contents()) eq <<"CONTENTS");
+
+(my $contents_2 = <<CONTENTS) =~ s/\n/\015\012/g;
+id,name
+1,"Alligator Descartes"
+3,"Jochen Wiedmann"
+2,"Tim Bunce"
+" 4","Andreas König"
+5
+CONTENTS
+
+
+
+Test(($contents = $fh->Contents()) eq $contents_2);
+
+print $contents;
+print <<CONTENTS;
 id,name\015
 1,"Alligator Descartes"\015
 3,"Jochen Wiedmann"\015
