@@ -5,7 +5,7 @@ use strict;
 
 use vars qw($loaded);
 
-BEGIN { $| = 1; print "1..26\n"; }
+BEGIN { $| = 1; print "1..27\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Text::CSV_XS;
 $loaded = 1;
@@ -91,3 +91,9 @@ Test(($csv->fields())[2] eq '')
 	      ($csv->fields())[2]);
 Test($csv->status())
     or print("Wrong status\n");
+
+
+# Are Integers and Reals quoted?
+Test($csv->combine('', 2, 3.4, 'a')
+     && ($csv->string eq q("",2,3.4,"a")))  # succeed
+    or printf("Expected %s, got %s\n", q(""), $csv->string());

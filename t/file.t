@@ -6,15 +6,15 @@ use strict;
 use vars qw($loaded);
 
 $| = 1;
-print "1..61\n";
+print "1..74\n";
 
 require Text::CSV_XS;
 
 
 ############################################################################
 
-package IO_Scalar;   # IO::Scalar replacement, because IO::Scalar isn't
-                     # around anywhere
+package IO_Scalar;   # IO::Scalar replacement, because IO::Scalar is not
+                     # yet a Core module.
 
 sub new ($;\$) {
     my($proto, $strRef) = @_;
@@ -23,7 +23,7 @@ sub new ($;\$) {
 	my($str) = "";
 	$self = \$str;
     } elsif (ref($strRef) ne 'SCALAR') {
-	die "Expected scalar";
+	die "Expected scalar ref";
     } else {
 	$self = \$$strRef;
     }
@@ -48,7 +48,7 @@ sub getline ($) {
     my($ifs) = $/;
     if (length($$self) == 0) {
 	$result = undef;
-    } elsif (defined($/)  &&  $$self =~ /^(.*?$ifs)(.*)$/) {
+    } elsif (defined($ifs)  &&  $$self =~ /^(.*?$ifs)(.*)$/s) {
 	$result = $1;
 	$$self = $2;
     } else {
@@ -162,3 +162,30 @@ Test($csv->status())
     or print("Wrong status\n");
 
 
+# This test because of a problem with DBD::CSV
+
+$fh = IO_Scalar->new();
+$csv->{binary} = 1;
+$csv->{eol} = "\015\012";
+Test($csv->print($fh, ["id","name"]))
+    or print "Bad character, but no failure\n";
+Test($csv->print($fh, [1, "Alligator Descartes"]));
+Test($csv->print($fh, ["3", "Jochen Wiedmann"]));
+Test($csv->print($fh, [2, "Tim Bunce"]));
+Test($csv->print($fh, [" 4", "Andreas König"]));
+Test($csv->print($fh, [5]));
+my $contents;
+Test(($contents = $fh->Contents()) eq <<"CONTENTS");
+"id","name"\015
+1,"Alligator Descartes"\015
+"3","Jochen Wiedmann"\015
+2,"Tim Bunce"\015
+" 4","Andreas König"\015
+5\015
+CONTENTS
+
+my $fields;
+for (my $i = 0;  $i < 6;  $i++) {
+    Test($fields = $csv->getline($fh))
+	and print "Row $i: $fields (@$fields)\n";
+}

@@ -13,16 +13,19 @@ package Text::CSV_XS;
 # Version 0.01  06/05/1997
 #    original version
 #
-#         0.10  01-May-1998  Moved parsing into XS; added quote_char,
-#                            escape_char and sep_char and binary mode,
-#                            print and getline methods.
+#         0.10  01-May-1998  Moved parsing and decoding into XS; added
+#                            quote_char, escape_char, sep_char and binary
+#                            mode, print and getline methods.
 #                            Jochen Wiedmann <joe@ispsoft.de>
 #
 #         0.11  12-May-1998  Added $csv->{'eol'} and
 #                            $csv->{'quote_char'} = undef
 #                            Jochen Wiedmann <joe@ispsoft.de>
 #
-################################################################################
+#         0.12  11-Jun-1998  Decode now checks for integer or real types.
+#                            Jochen Wiedmann <joe@ispsoft.de>
+#
+############################################################################
 
 require 5.004;
 use strict;
@@ -30,27 +33,32 @@ use strict;
 require DynaLoader;
 use vars qw($VERSION @ISA);
 
-$VERSION =     '0.11';
+$VERSION =     '0.12';
 @ISA =         qw(DynaLoader);
 
 
-################################################################################
+############################################################################
+#
 # version
 #
-#    class/object method expecting no arguments and returning the version number
-#    of Text::CSV.  there are no side-effects.
-################################################################################
+#    class/object method expecting no arguments and returning the version
+#    number of Text::CSV.  there are no side-effects.
+#
+############################################################################
 sub version {
   return $VERSION;
 }
 
 
-################################################################################
+############################################################################
+#
 # new
 #
-#    class/object method expecting no arguments and returning a reference to a
-#    newly created Text::CSV object.
-################################################################################
+#    class/object method expecting no arguments and returning a reference to
+#    a newly created Text::CSV object.
+#
+############################################################################
+
 sub new ($;$) {
     my($proto, $attr) = @_;
     my($class) = ref($proto) || $proto;
@@ -71,50 +79,59 @@ sub new ($;$) {
 }
 
 
-################################################################################
+############################################################################
+#
 # status
 #
-#    object method returning the success or failure of the most recent combine()
-#    or parse().  there are no side-effects.
-################################################################################
+#    object method returning the success or failure of the most recent
+#    combine() or parse().  there are no side-effects.
+############################################################################
+
 sub status ($) {
   my $self = shift;
   return $self->{'_STATUS'};
 }
 
 
-################################################################################
+############################################################################
+#
 # error_input
 #
 #    object method returning the first invalid argument to the most recent
 #    combine() or parse().  there are no side-effects.
-################################################################################
+############################################################################
+
 sub error_input ($) {
   my $self = shift;
   return $self->{'_ERROR_INPUT'};
 }
 
 
-################################################################################
+############################################################################
+#
 # string
 #
 #    object method returning the result of the most recent combine() or the
-#    input to the most recent parse(), whichever is more recent.  there are no
-#    side-effects.
-################################################################################
+#    input to the most recent parse(), whichever is more recent.  there are
+#    no side-effects.
+#
+############################################################################
+
 sub string ($) {
   my $self = shift;
   return $self->{'_STRING'};
 }
 
 
-################################################################################
+############################################################################
 # fields
 #
-#    object method returning the result of the most recent parse() or the input
-#    to the most recent combine(), whichever is more recent.  there are no
-#    side-effects.
-################################################################################
+#    object method returning the result of the most recent parse() or the
+#    input to the most recent combine(), whichever is more recent.  there
+#    are no side-effects.
+#
+############################################################################
+
 sub fields ($) {
   my $self = shift;
   if (ref($self->{'_FIELDS'})) {
@@ -124,18 +141,21 @@ sub fields ($) {
 }
 
 
-################################################################################
+############################################################################
+#
 # combine
 #
 #    object method returning success or failure.  the given arguments are
-#    combined into a single comma-separated value.  failure can be the result of
-#    no arguments or an argument containing an invalid character.   side-effects
-#    include:
+#    combined into a single comma-separated value.  failure can be the
+#    result of no arguments or an argument containing an invalid character.
+#    side-effects include:
 #      setting status()
 #      setting fields()
 #      setting string()
 #      setting error_input()
-################################################################################
+#
+############################################################################
+
 sub combine ($@) {
   my $self = shift;
   my @part = @_;
@@ -151,18 +171,21 @@ sub combine ($@) {
 }
 
 
-################################################################################
+############################################################################
+#
 # parse
 #
-#    object method returning success or failure.  the given argument is expected
-#    to be a valid comma-separated value.  failure can be the result of
-#    no arguments or an argument containing an invalid sequence of characters.
-#    side-effects include:
+#    object method returning success or failure.  the given argument is
+#    expected to be a valid comma-separated value.  failure can be the
+#    result of no arguments or an argument containing an invalid sequence
+#    of characters. side-effects include:
 #      setting status()
 #      setting fields()
 #      setting string()
 #      setting error_input()
-################################################################################
+#
+#############################################################################
+
 sub parse ($$) {
   my($self, $str) = @_;
   my($fields) = [];

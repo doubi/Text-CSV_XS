@@ -1,8 +1,14 @@
+1998-06-11  Jochen Wiedmann  <joe@ispsoft.de> (0.12)
+
+	* CSV_XS.xs (Encode): Integers and Reals are no longer quoted.
+
+	* Added $csv->{types}.
+
 1998-05-12  Jochen Wiedmann  <joe@ispsoft.de> (0.11)
 
-	* Added $csv->{'eol'}
+	* Added $csv->{eol}
 
-	* Added $csv->{'quote_char'} = undef
+	* Added $csv->{quote_char} = undef
 
 1998-05-05  Jochen Wiedmann  <joe@ispsoft.de> (0.10)
 

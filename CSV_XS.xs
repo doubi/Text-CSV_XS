@@ -33,6 +33,7 @@ typedef struct {
     char* bptr;
     int useIO;
     SV* tmp;
+    AV* types;
 } csv_t;
 
 
@@ -63,6 +64,14 @@ static void SetupCsv(csv_t* csv, HV* self) {
         ptr = SvPV(*svp, len);
 	if (len) {
 	    csv->sepChar = *ptr;
+	}
+    }
+    csv->types = NULL;
+    if ((svp = hv_fetch(self, "types", 5, 0))  &&  *svp  &&  SvOK(*svp)  &&
+	SvROK(*svp)) {
+        SV* sv = SvRV(*svp);
+	if (SvOK(sv)  &&  SvTYPE(sv) == SVt_PVAV) {
+	    csv->types = (AV*) sv;
 	}
     }
     csv->binary = 0;
@@ -119,7 +128,8 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 	if ((svp = av_fetch(fields, i, 0))  &&  *svp  &&  SvOK(*svp)) {
 	    STRLEN len;
 	    char* ptr = SvPV(*svp, len);
-	    if (csv->quoteChar) {
+	    int quoteMe = !SvIOK(*svp)  &&  !SvNOK(*svp)  &&  csv->quoteChar;
+	    if (quoteMe) {
 	        CSV_PUT(csv, dst, csv->quoteChar);
 	    }
 	    while (len-- > 0) {
@@ -146,7 +156,7 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 		}
 		CSV_PUT(csv, dst, c);
 	    }
-	    if (csv->quoteChar) {
+	    if (quoteMe) {
 	        CSV_PUT(csv, dst, csv->quoteChar);
 	    }
 	}
@@ -285,7 +295,7 @@ restart:
 		CSV_PUT_SV(insideQuotes, c);
 	    } else {
 	        int c2 = CSV_GET;
-		if (c2 == '\015') {
+		if (c2 == '\012') {
 		    AV_PUSH(fields, insideField);
 		    return TRUE;
 		} else {
@@ -454,6 +464,7 @@ Decode(self, src, fields, useIO)
         csv_t csv;
 	HV* hv;
 	AV* av;
+	int result;
 
 	if (!self  ||  !SvOK(self)  ||  !SvROK(self)
 	    ||  SvTYPE(SvRV(self)) != SVt_PVHV) {
@@ -478,7 +489,26 @@ Decode(self, src, fields, useIO)
 	    csv.bptr = SvPV(src, size);
 	    csv.size = size;
 	}
-	ST(0) = Decode(&csv, src, av) ? &sv_yes : &sv_undef;
+	ST(0) = (result = Decode(&csv, src, av)) ? &sv_yes : &sv_undef;
+	if (result) {
+	    I32 i, len = av_len(av);
+	    SV** svp;
+
+	    for (i = 0;  i <= len;  i++) {
+	        if ((svp = av_fetch(av, i, 0))  &&  *svp  &&  SvOK(*svp)) {
+		    switch(looks_like_number(*svp)) {
+		      case 1:
+			sv_setiv(*svp, atol(SvPV(*svp, na)));
+			SvIOK_on(*svp);
+			break;
+		      case 2:
+			sv_setnv(*svp, atof(SvPV(*svp, na)));
+			SvNOK_on(*svp);
+			break;
+		    }
+		}
+	    }
+	}
 	XSRETURN(1);
     }
 
