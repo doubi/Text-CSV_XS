@@ -10,6 +10,7 @@
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
+#include "ppport.h"
 
 
 #define CSV_XS_TYPE_PV 0
@@ -519,7 +520,7 @@ Encode(self, dst, fields, useIO, eol)
 	    av = (AV*) SvRV(fields);
 	}
 
-	ST(0) = xsEncode(hv, av, dst, useIO, eol) ? &sv_yes : &sv_undef;
+	ST(0) = xsEncode(hv, av, dst, useIO, eol) ? &PL_sv_yes : &PL_sv_undef;
 	XSRETURN(1);
     }
 
@@ -545,7 +546,7 @@ Decode(self, src, fields, useIO)
 	    av = (AV*) SvRV(fields);
 	}
 
-	ST(0) = xsDecode(hv, av, src, useIO) ? &sv_yes : &sv_no;
+	ST(0) = xsDecode(hv, av, src, useIO) ? &PL_sv_yes : &PL_sv_no;
 	XSRETURN(1);
     }
 
@@ -572,9 +573,9 @@ print(self, io, fields)
 	if ((svp = hv_fetch(hv, "eol", 3, FALSE))) {
 	    eol = *svp;
 	} else {
-	    eol = &sv_undef;
+	    eol = &PL_sv_undef;
 	}
-	ST(0) = xsEncode(hv, av, io, 1, eol) ? &sv_yes : &sv_no;
+	ST(0) = xsEncode(hv, av, io, 1, eol) ? &PL_sv_yes : &PL_sv_no;
 	XSRETURN(1);
     }
 
@@ -594,6 +595,6 @@ getline(self, io)
 	hv_delete(hv, "_ERROR_INPUT", 12, G_DISCARD);
 	av = newAV();
 	ST(0) = xsDecode(hv, av, io, 1) ?
-	    sv_2mortal(newRV_noinc((SV*) av)) : &sv_undef;
+	    sv_2mortal(newRV_noinc((SV*) av)) : &PL_sv_undef;
 	XSRETURN(1);
     }
