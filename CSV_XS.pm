@@ -21,14 +21,14 @@ package Text::CSV_XS;
 require 5.004;
 use strict;
 
-require DynaLoader;
-require Exporter;
 
-use vars qw($VERSION @ISA @EXPORT_OK);
+use DynaLoader ();
 
-$VERSION =     '0.15';
-@ISA =         qw(Exporter DynaLoader);
-@EXPORT_OK = qw(IV PV NV);
+use vars qw($VERSION @ISA);
+
+$VERSION =     '0.16';
+@ISA =         qw(DynaLoader);
+
 
 sub PV () { 0 }
 sub IV () { 1 }
@@ -398,9 +398,9 @@ glob behind an IO::Wrap object. See L<IO::File(3)> and L<IO::Wrap(3)>
 for details.
 
 For performance reasons the print method doesn't create a result string.
-In particular the I<$csv->string()>, I<$csv->status()>, I<$csv->fields()>
-and I<$csv->error_input()> methods are meaningless after executing this
-method.
+In particular the I<$csv-E<gt>string()>, I<$csv-E<gt>status()>,
+I<$csv->fields()> and I<$csv-E<gt>error_input()> methods are meaningless
+after executing this method.
 
 =item string
 
@@ -432,7 +432,7 @@ combine: It reads a row from the IO object $io using $io->getline()
 and parses this row into an array ref. This array ref is returned
 by the function or undef for failure.
 
-The I<$csv->string()>, I<$csv->fields()> and I<$csv->status()>
+The I<$csv-E<gt>string()>, I<$csv-E<gt>fields()> and I<$csv-E<gt>status()>
 methods are meaningless, again.
 
 =item types

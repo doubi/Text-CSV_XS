@@ -381,6 +381,12 @@ restart:
 		} else {
 		    ERROR_INSIDE_QUOTES;
 		}
+	    } else if (csv->quoteChar != csv->escapeChar) {
+	        if (!csv->binary  &&
+		    (c != '\011'  &&  (c < '\040'  ||  c > '\176'))) {
+		    ERROR_INSIDE_FIELD;
+		}
+		CSV_PUT_SV(insideField, c);
 	    } else {
 	        ERROR_INSIDE_FIELD;
 	    }
