@@ -26,7 +26,7 @@ use DynaLoader ();
 
 use vars qw($VERSION @ISA);
 
-$VERSION =     '0.18';
+$VERSION =     '0.20';
 @ISA =         qw(DynaLoader);
 
 

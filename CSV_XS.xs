@@ -58,11 +58,12 @@ static void SetupCsv(csv_t* csv, HV* self) {
 	}
     }
     csv->escapeChar = '"';
-    if ((svp = hv_fetch(self, "escape_char", 11, 0))  &&  *svp
-	&&  SvOK(*svp)) {
-        ptr = SvPV(*svp, len);
-	if (len) {
-	    csv->escapeChar = *ptr;
+    if ((svp = hv_fetch(self, "escape_char", 11, 0))  &&  *svp) {
+        if (!SvOK(*svp)) {
+	    csv->escapeChar = '\0';
+	} else {
+	    ptr = SvPV(*svp, len);
+	    csv->escapeChar = len ? *ptr : '\0';
 	}
     }
     csv->sepChar = ',';
@@ -152,8 +153,7 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 		    if (c <= 0x20  ||  (c >= 0x7f  &&  c <= 0xa0)  ||
 			(csv->quoteChar && c == csv->quoteChar)  ||
 			(csv->sepChar && c == csv->sepChar)  ||
-			(csv->escapeChar  &&  c == csv->escapeChar)  ||
-			(c == csv->escapeChar)) {
+			(csv->escapeChar  &&  c == csv->escapeChar)) {
 		        /* Binary character */
 			break;
 		    }
@@ -176,13 +176,13 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 		}
 		if (csv->quoteChar  &&  c == csv->quoteChar) {
 		    e = 1;
-		} else if (c == csv->escapeChar) {
+		} else if (csv->escapeChar  &&  c == csv->escapeChar) {
 		    e = 1;
 		} else if (c == '\0') {
 		    e = 1;
 		    c = '0';
 		}
-		if (e) {
+		if (e  &&  csv->escapeChar) {
 		    CSV_PUT(csv, dst, csv->escapeChar);
 		}
 		CSV_PUT(csv, dst, c);
@@ -339,7 +339,7 @@ restart:
 		waitingForField = 0;
 	    } else if (insideQuotes) {
 	        int c2;
-	        if (c != csv->escapeChar) {
+	        if (!csv->escapeChar  ||  c != csv->escapeChar) {
 		    /* Field is terminated */
 		    AV_PUSH(fields, insideQuotes);
 		    insideQuotes = NULL;
@@ -388,7 +388,7 @@ restart:
 		} else {
 		    ERROR_INSIDE_QUOTES;
 		}
-	    } else if (csv->quoteChar != csv->escapeChar) {
+	    } else if (csv->quoteChar  &&  csv->quoteChar != csv->escapeChar) {
 	        if (!csv->binary  &&
 		    (c != '\011'  &&  (c < '\040'  ||  c > '\176'))) {
 		    ERROR_INSIDE_FIELD;
@@ -397,7 +397,7 @@ restart:
 	    } else {
 	        ERROR_INSIDE_FIELD;
 	    }
-	} else if (c == csv->escapeChar) {
+	} else if (csv->escapeChar  &&  c == csv->escapeChar) {
 	    /*  This means quoteChar != escapeChar  */
 	    if (waitingForField) {
 	        insideField = newSVpv("", 0);
@@ -408,7 +408,11 @@ restart:
 		    ERROR_INSIDE_QUOTES;
 		} else if (c2 == '0') {
 		    CSV_PUT_SV(insideQuotes, (int) '\0');
-		} else if (c2 == csv->quoteChar  ||  c2 == csv->sepChar) {
+		} else if (c2 == csv->quoteChar  ||  c2 == csv->sepChar  ||
+			   c2 == csv->escapeChar) {
+		    /* c2 == csv->escapeChar added 28-06-1999,
+		     * Pavel Kotala <pkotala@logis.cz>
+		     */
 		    CSV_PUT_SV(insideQuotes, c2);
 		} else {
 		    ERROR_INSIDE_QUOTES;
