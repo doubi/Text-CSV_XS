@@ -137,6 +137,7 @@ static int Encode(csv_t* csv, SV* dst, AV* fields, SV* eol) {
 		    unsigned char c = *ptr2;
 		    if (c <= 0x20  ||  (c >= 0x7f  &&  c <= 0xa0)  ||
 			(csv->quoteChar && c == csv->quoteChar)  ||
+			(csv->sepChar && c == csv->sepChar)  ||
 			(csv->escapeChar  &&  c == csv->escapeChar)  ||
 			(c == csv->escapeChar)) {
 		        /* Binary character */

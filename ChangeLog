@@ -1,3 +1,8 @@
+1998-08-13  Jochen Wiedmann  <joe@ispsoft.de> (0.14)
+
+	* CSV_XS.xs: Forgot to escape sepchar; patched by Paul Walmsley,
+	  <shag@nicar.org>.
+
 1998-07-20  Jochen Wiedmann  <joe@ispsoft.de> (0.13)
 
 	* CSV_XS.xs (Encode): Strings qre quoted only if required. 

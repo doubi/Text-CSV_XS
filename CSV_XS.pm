@@ -16,21 +16,6 @@ package Text::CSV_XS;
 # Based on Text::CSV by:
 #    Alan Citterman <alan@mfgrtl.com>
 #
-# Version 0.01  06/05/1997
-#    original version
-#
-#         0.10  01-May-1998  Moved parsing and decoding into XS; added
-#                            quote_char, escape_char, sep_char and binary
-#                            mode, print and getline methods.
-#                            Jochen Wiedmann <joe@ispsoft.de>
-#
-#         0.11  12-May-1998  Added $csv->{'eol'} and
-#                            $csv->{'quote_char'} = undef
-#                            Jochen Wiedmann <joe@ispsoft.de>
-#
-#         0.12  11-Jun-1998  Decode now checks for integer or real types.
-#                            Jochen Wiedmann <joe@ispsoft.de>
-#
 ############################################################################
 
 require 5.004;
@@ -41,7 +26,7 @@ require Exporter;
 
 use vars qw($VERSION @ISA @EXPORT_OK);
 
-$VERSION =     '0.13';
+$VERSION =     '0.14';
 @ISA =         qw(Exporter DynaLoader);
 @EXPORT_OK = qw(IV PV NV);
 

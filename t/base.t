@@ -5,7 +5,7 @@ use strict;
 
 use vars qw($loaded);
 
-BEGIN { $| = 1; print "1..27\n"; }
+BEGIN { $| = 1; print "1..28\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Text::CSV_XS;
 $loaded = 1;
@@ -64,11 +64,13 @@ Test($csv->combine('', 'I said, "Hi!"', '') &&
 	      $csv->string());
 Test($csv->combine('"', 'abc') && ($csv->string eq q("""",abc)))  # succeed
     or printf("Expected %s, got %s\n", q("""","abc"), $csv->string());
+Test($csv->combine(',') && ($csv->string eq q(",")))  # succeed
+    or printf("Expected %s, got %s\n", q("""","abc"), $csv->string());
 Test($csv->combine('abc', '"') && ($csv->string eq q(abc,"""")))  # succeed
     or printf("Expected %s, got %s\n", q("abc",""""), $csv->string());
-Test($csv->combine('abc', 'def', 'ghi') &&
-     ($csv->string eq q(abc,def,ghi)))  # succeed
-    or printf("Expected %s, got %s\n", q("abc","def","ghi"),
+Test($csv->combine('abc', 'def', 'ghi', 'j,k') &&
+     ($csv->string eq q(abc,def,ghi,"j,k")))  # succeed
+    or printf("Expected %s, got %s\n", q(abc,def,ghi,"j,k"),
 	      $csv->string());
 Test($csv->combine("abc\tdef", 'ghi') &&
      ($csv->string eq qq("abc\tdef",ghi)))  # succeed
