@@ -1,3 +1,8 @@
+2001-10-10  Jochen Wiedmann  <joe@ispsoft.de> (0.23)
+
+	* Changed "char" to "unsigned char" in CSV_XS.xs.
+	  Matthew Graham <MGraham@pacificaccess.com.au>
+
 2000-12-22  Jochen Wiedmann  <joe@ispsoft.de> (0.22)
 
 	* CSV_XS.xs: Added the handling of escape characters

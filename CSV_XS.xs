@@ -27,9 +27,9 @@
 
 typedef struct {
   HV* self;
-  char quoteChar;
-  char escapeChar;
-  char sepChar;
+  unsigned char quoteChar;
+  unsigned char escapeChar;
+  unsigned char sepChar;
   int binary;
   int alwaysQuote;
   char buffer[1024];
