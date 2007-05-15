@@ -27,9 +27,9 @@
 #define	byte	unsigned char
 typedef struct {
     HV*		 self;
-    byte	 quoteChar;
-    byte	 escapeChar;
-    byte	 sepChar;
+    byte	 quote_char;
+    byte	 escape_char;
+    byte	 sep_char;
     int		 binary;
     int		 flags;
     int		 alwaysQuote;
@@ -52,29 +52,29 @@ static void SetupCsv (csv_t *csv, HV *self)
     STRLEN	 len;
     char	*ptr;
 
-    csv->quoteChar = '"';
+    csv->quote_char = '"';
     if ((svp = hv_fetch (self, "quote_char", 10, 0)) && *svp) {
 	if (SvOK (*svp)) {
 	    ptr = SvPV (*svp, len);
-	    csv->quoteChar = len ? *ptr : (char)0;
+	    csv->quote_char = len ? *ptr : (char)0;
 	    }
 	else
-	    csv->quoteChar = (char)0;
+	    csv->quote_char = (char)0;
 	}
-    csv->escapeChar = '"';
+    csv->escape_char = '"';
     if ((svp = hv_fetch (self, "escape_char", 11, 0)) && *svp) {
 	if (SvOK (*svp)) {
 	    ptr = SvPV (*svp, len);
-	    csv->escapeChar = len ? *ptr : (char)0;
+	    csv->escape_char = len ? *ptr : (char)0;
 	    }
 	else
-	    csv->escapeChar = (char)0;
+	    csv->escape_char = (char)0;
 	}
-    csv->sepChar = ',';
+    csv->sep_char = ',';
     if ((svp = hv_fetch (self, "sep_char", 8, 0)) && *svp && SvOK (*svp)) {
 	ptr = SvPV (*svp, len);
 	if (len)
-	    csv->sepChar = *ptr;
+	    csv->sep_char = *ptr;
 	}
     csv->types = NULL;
     if ((svp = hv_fetch (self, "_types",   6, 0)) && *svp && SvOK (*svp)) {
@@ -128,11 +128,14 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
 {
     int		i;
 
+    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char)
+	return FALSE;
+
     for (i = 0; i <= av_len (fields); i++) {
 	SV    **svp;
 
 	if (i > 0)
-	    CSV_PUT (csv, dst, csv->sepChar);
+	    CSV_PUT (csv, dst, csv->sep_char);
 	if ((svp = av_fetch (fields, i, 0)) && *svp && SvOK (*svp)) {
 	    STRLEN	 len;
 	    char	*ptr = SvPV (*svp, len);
@@ -143,7 +146,7 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
 	     * and if the string contains quote or escape characters.
 	     */
 	    if (!quoteMe &&
-	       ( quoteMe = (!SvIOK (*svp) && !SvNOK (*svp) && csv->quoteChar))) {
+	       ( quoteMe = (!SvIOK (*svp) && !SvNOK (*svp) && csv->quote_char))) {
 		char	*ptr2;
 		STRLEN	 l;
 
@@ -151,9 +154,9 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
 		    byte	c = *ptr2;
 
 		    if (c <= 0x20 || (c >= 0x7f && c <= 0xa0)  ||
-		       (csv->quoteChar  && c == csv->quoteChar) ||
-		       (csv->sepChar    && c == csv->sepChar)   ||
-		       (csv->escapeChar && c == csv->escapeChar)) {
+		       (csv->quote_char  && c == csv->quote_char) ||
+		       (csv->sep_char    && c == csv->sep_char)   ||
+		       (csv->escape_char && c == csv->escape_char)) {
 			/* Binary character */
 			break;
 			}
@@ -161,7 +164,7 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
 		quoteMe = (l > 0);
 		}
 	    if (quoteMe)
-		CSV_PUT (csv, dst, csv->quoteChar);
+		CSV_PUT (csv, dst, csv->quote_char);
 	    while (len-- > 0) {
 		char	c = *ptr++;
 		int	e = 0;
@@ -173,22 +176,22 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
 			SvREFCNT_dec (*svp);
 		    return FALSE;
 		    }
-		if (csv->quoteChar  && c == csv->quoteChar)
+		if (csv->quote_char  && c == csv->quote_char)
 		    e = 1;
 		else
-		if (csv->escapeChar && c == csv->escapeChar)
+		if (csv->escape_char && c == csv->escape_char)
 		    e = 1;
 		else
 		if (c == (char)0) {
 		    e = 1;
 		    c = '0';
 		    }
-		if (e && csv->escapeChar)
-		    CSV_PUT (csv, dst, csv->escapeChar);
+		if (e && csv->escape_char)
+		    CSV_PUT (csv, dst, csv->escape_char);
 		CSV_PUT (csv, dst, c);
 		}
 	    if (quoteMe)
-		CSV_PUT (csv, dst, csv->quoteChar);
+		CSV_PUT (csv, dst, csv->quote_char);
 	    }
 	}
     if (eol && SvOK (eol)) {
@@ -281,10 +284,13 @@ static int Parse (csv_t *csv, SV *src, AV *fields, AV *fflags)
     STRLEN	 len;
     int		 seenSomething		= FALSE;
 
+    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char)
+	return FALSE;
+
     while ((c = CSV_GET) != EOF) {
 	seenSomething = TRUE;
 restart:
-	if (c == csv->sepChar) {
+	if (c == csv->sep_char) {
 	    if (waitingForField) {
 		av_push (fields, newSVpv ("", 0));
 		if (csv->flags)
@@ -361,7 +367,7 @@ restart:
 		}
 	    }
 	else
-	if (c == csv->quoteChar) {
+	if (c == csv->quote_char) {
 	    if (waitingForField) {
 		insideQuotes = newSVpv ("", 0);
 		f |= CSV_FLAGS_QUO;
@@ -371,13 +377,13 @@ restart:
 	    if (insideQuotes) {
 		int	c2;
 
-		if (!csv->escapeChar || c != csv->escapeChar) {
+		if (!csv->escape_char || c != csv->escape_char) {
 		    /* Field is terminated */
 		    AV_PUSH (insideQuotes);
 		    insideQuotes = NULL;
 		    waitingForField = 1;
 		    c2 = CSV_GET;
-		    if (c2 == csv->sepChar)
+		    if (c2 == csv->sep_char)
 			continue;
 
 		    if (c2 == EOF)
@@ -406,7 +412,7 @@ restart:
 		    return TRUE;
 		    }
 
-		if (c2 == csv->sepChar) {
+		if (c2 == csv->sep_char) {
 		    AV_PUSH (insideQuotes);
 		    insideQuotes = NULL;
 		    waitingForField = 1;
@@ -415,7 +421,7 @@ restart:
 		if (c2 == '0')
 		    CSV_PUT_SV (insideQuotes, 0)
 		else
-		if (c2 == csv->quoteChar  ||  c2 == csv->sepChar)
+		if (c2 == csv->quote_char  ||  c2 == csv->sep_char)
 		    CSV_PUT_SV (insideQuotes, c2)
 		else
 		if (c2 == '\012') {
@@ -436,7 +442,7 @@ restart:
 		    }
 		}
 	    else
-	    if (csv->quoteChar && csv->quoteChar != csv->escapeChar) {
+	    if (csv->quote_char && csv->quote_char != csv->escape_char) {
 		if (c != '\011' && (c < '\040' || c > '\176')) {
 		    f |= CSV_FLAGS_BIN;
 		    if (!csv->binary)
@@ -449,8 +455,8 @@ restart:
 		ERROR_INSIDE_FIELD;
 	    }
 	else
-	if (csv->escapeChar && c == csv->escapeChar) {
-	    /*  This means quoteChar != escapeChar  */
+	if (csv->escape_char && c == csv->escape_char) {
+	    /*  This means quote_char != escape_char  */
 	    if (waitingForField) {
 		insideField = newSVpv ("", 0);
 		waitingForField = 0;
@@ -465,11 +471,11 @@ restart:
 		if (c2 == '0')
 		    CSV_PUT_SV (insideQuotes, 0)
 		else
-		if (c2 == csv->quoteChar || c2 == csv->sepChar ||
-		    c2 == csv->escapeChar) {
-		   /* c2 == csv->escapeChar added 28-06-1999,
-		    * Pavel Kotala <pkotala@logis.cz>
-		    */
+		if (c2 == csv->quote_char || c2 == csv->sep_char ||
+		    c2 == csv->escape_char) {
+		    /* c2 == csv->escape_char added 28-06-1999,
+		     * Pavel Kotala <pkotala@logis.cz>
+		     */
 		    CSV_PUT_SV (insideQuotes, c2);
 		    }
 		else
@@ -520,6 +526,10 @@ restart:
 	    av_push (fields, newSVpv ("", 0));
 	    if (csv->flags)
 		av_push (fflags, newSViv (f));
+	    }
+	else {
+	    if (csv->useIO)
+		return FALSE;
 	    }
 	}
     else

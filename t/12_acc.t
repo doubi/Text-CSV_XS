@@ -35,3 +35,5 @@ is ($csv->escape_char ("\\"),	"\\",			"escape_char (\\)");
 ok ($csv->combine (@fld),				"combine");
 is ($csv->string,
     qq{=txt \\=, "Hi!"=;=Yes=;==;=2=;;=1.09=;=\r=;},	"string");
+
+1;

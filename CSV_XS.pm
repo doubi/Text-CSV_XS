@@ -28,7 +28,7 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.25";
+$VERSION = "0.26";
 @ISA     = qw( DynaLoader );
 
 sub PV () { 0 }
@@ -178,7 +178,7 @@ sub fields ($)
 #
 #   object method returning the result of the most recent parse () or the
 #   input to the most recent combine (), whichever is more recent.  there
-#   are no side-effects. The FieldFlags return (if available) some of the
+#   are no side-effects. meta_info () returns (if available)  some of the
 #   field's properties
 
 sub meta_info ($)
@@ -243,6 +243,7 @@ sub combine ($@)
 sub parse ($$)
 {
     my ($self, $str) = @_;
+
     my $fields = [];
     my $fflags = [];
     $self->{_STRING} = $self->{ERROR_INPUT} = $str;
@@ -338,6 +339,8 @@ The char used for quoting fields containing blanks, by default the
 double quote character (C<">). A value of undef suppresses
 quote chars. (For simple cases only).
 
+The quote character can not be equal to the separation character.
+
 =item eol
 
 An end-of-line string to add to rows, usually C<undef> (nothing,
@@ -349,14 +352,19 @@ Line Feed)
 The char used for escaping certain characters inside quoted fields,
 by default the same character. (C<">)
 
+The escape character can not be equal to the separation character.
+
 =item sep_char
 
 The char used for separating fields, by default a comma. (C<,>)
 
+The separation character can not be equal to the quote character.
+The separation character can not be equal to the escape character.
+
 =item binary
 
 If this attribute is TRUE, you may use binary characters in quoted fields,
-including line feeds, carriage returns and NUL bytes. (The latter must
+including line feeds, carriage returns and NULL bytes. (The latter must
 be escaped as C<"0>.) By default this feature is off.
 
 =item types
@@ -379,7 +387,7 @@ Text::CSV_XS. :-)
 By default, the parsing of input lines is as simple and fast as
 possible. However, some parsing information - like quotation of
 the original field - is lost in that process. Set this flag to
-true to be able to retreive that information after parsing with
+true to be able to retrieve that information after parsing with
 the methods C<meta_info ()>, C<is_quoted ()>, and C<is_binary ()>
 described below.  Default is false.
 
@@ -559,9 +567,9 @@ Where C<$column_idx> is the (zero-based) index of the column in the
 last result of C<parse ()>.
 
 This returns a true value if the data in the indicated column was
-enclused in C<quote_char> quotes. This might be important for data
+enclosed in C<quote_char> quotes. This might be important for data
 where C<,20070108,> is to be treated as a numeric value, and where
-C<,"20070108",> is explicitely marked as character string data.
+C<,"20070108",> is explicitly marked as character string data.
 
 =item is_binary
 
@@ -602,7 +610,7 @@ C<combine ()> or C<parse ()>, whichever was called more recently.
 The arguments to these two internal functions are deliberately not
 described or documented to enable the module author(s) to change it
 when they feel the need for it and using them is highly discouraged
-as the API may change in future realeases.
+as the API may change in future releases.
 
 =head1 EXAMPLES
 
@@ -674,7 +682,7 @@ A field within CSV must be surrounded by double-quotes to contain a comma.
 A field within CSV must be surrounded by double-quotes to contain an embedded
 double-quote, represented by a pair of consecutive double-quotes. In binary
 mode you may additionally use the sequence C<"0> for representation of a
-NUL byte.
+NULL byte.
 
 =item 5
 
@@ -685,6 +693,12 @@ A CSV string may be terminated by 0x0A (line feed) or by 0x0D,0x0A
 
 =head1 TODO
 
+Discuss an option to make the eol honor the $/ setting. Maybe
+
+  my $csv = Text::CSV_XS->new ({ eol => $/ });
+
+is already enough, and new options only make things less opaque.
+
 Future extensions might include extending the C<fields_flags ()>,
 C<is_quoted ()>, and C<is_binary ()> to accept setting these flags
 for fields, so you can specify which fields are quoted in the
@@ -693,11 +707,22 @@ combine ()/string () combination.
   $csv->meta_info (0, 1, 1, 3, 0, 0);
   $csv->is_quoted (3, 1);
 
+Adding an option that enables the parser to distinguish between
+empty fields and undefined fields, like
+
+  $csv->quote_always (1);
+  $csv->allow_undef (1);
+  $csv->parse (qq{,"",1,"2",,""});
+  my @fld = $csv->fields ();
+
+Then would return (undef, "", "1", "2", undef, "") in @fld, instead
+of the current ("", "", "1", "2", "", "").
+
 =head1 SEE ALSO
 
 L<perl(1)>, L<IO::File(3)>, L<IO::Wrap(3)>, L<Spreadsheet::Read(3)>
 
-=head1 AUTHOR
+=head1 AUTHORS and MAINTAINERS
 
 Alan Citterman F<E<lt>alan@mfgrtl.comE<gt>> wrote the original Perl
 module. Please don't send mail concerning Text::CSV_XS to Alan, as

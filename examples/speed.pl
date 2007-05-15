@@ -14,7 +14,7 @@ my @fields = (
     "+49 7123 14881",
     "joe\@ispsoft,de");
 
-my ($count, $csv) = (10000, Text::CSV_XS->new);
+my ($count, $csv) = (1_000_000, Text::CSV_XS->new);
 
 print "Testing row creation speed ...\n";
 my $t1 = Benchmark->new;

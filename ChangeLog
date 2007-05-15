@@ -1,4 +1,23 @@
-2007-05-07  H.Merijn Brand   <h.m.brand@xs4all.nl> (0.25)
+2007-05-15  0.26 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* Add $csv->allow_undef (1) suggestion in TODO
+	  Still have to find the best spot to document
+	  the difference between empty string and undef
+	* Spell-checked the pod and fixed some typo's
+	* Added t/70_rt.t
+	  - Regression         for RT 24386: \t doesn't work (WFM)
+	  - Regression and fix for RT 21530: getline () return at eof
+	    This one still passes under perl 5.00504
+	  - Regression         for RT 18703: Fails to use quote_char of '~'
+	* Added t/55_combi.t for most combinations of always_quote,
+	  sep_char, quote_char, and escape_char
+	* Added docs about sep_char not allowed to be either quote_char
+	  or escape_char
+	* Both combine () and parse () now return FALSE id sep_char is
+	  equal to either quote_char or escape_char. Done in XS, as it
+	  was a slowdown of 10% when done in perl.
+
+2007-05-07  0.25 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* Merijn got the maintainership
 	- code reformat and code cleanup
