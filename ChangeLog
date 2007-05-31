@@ -1,3 +1,17 @@
+2007-05-31  0.27 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* checked with perlcritic (still works under 5.00504)
+	  so 3-arg open cannot be used (except in the docs)
+	* 3-arg open in docs too
+	* Added a lot to the TODO list
+	* Some more info on using escape character (jZed)
+	* Mention Text::CSV_PP in README
+	* Added t/45_eol.t, eol tests
+	* Added a section about embedded newlines in the pod
+	* Allow \r as eol ($/) for parsing
+	* More docs for eol
+	* More eol = \r fixes, tfrayner's test case added to t/45_eol.t
+
 2007-05-15  0.26 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* Add $csv->allow_undef (1) suggestion in TODO

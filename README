@@ -28,3 +28,6 @@ Author:
     Jochen Wiedmann <joe@ispsoft.de>
 
     Interface design by Alan Citterman <alan@mfgrtl.com>
+
+    A pure-perl version is being maintained by Makamaka Hannyaharamitu
+    as Text::CSV_PP, which tries to follow Text::CSV_XS very closely.

@@ -13,6 +13,7 @@ t/15_flags.t		Basic flag tests
 t/20_file.t		IO tests (print and getline)
 t/30_types.t		Tests for the "types" attribute.
 t/40_misc.t		Binary mode tests
+t/45_eol.t		Embedded EOL
 t/50_utf8.t		Unicode stress tests
 t/55_combi.t		Different CSV character combinations
 t/60_samples.t		Miscellaneous problems from the modules history.

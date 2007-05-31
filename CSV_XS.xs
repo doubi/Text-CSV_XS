@@ -9,9 +9,11 @@
 #include <XSUB.h>
 #include "ppport.h"
 
-#define CSV_XS_TYPE_PV 0
-#define CSV_XS_TYPE_IV 1
-#define CSV_XS_TYPE_NV 2
+#define MAINT_DEBUG	0
+
+#define CSV_XS_TYPE_PV	0
+#define CSV_XS_TYPE_IV	1
+#define CSV_XS_TYPE_NV	2
 
 #define CSV_FLAGS_QUO	0x0001
 #define CSV_FLAGS_BIN	0x0002
@@ -41,6 +43,9 @@ typedef struct {
     SV		*tmp;
     char	*types;
     STRLEN	 types_len;
+    char	*eol;
+    STRLEN	 eol_len;
+    int		 eol_is_cr;
     } csv_t;
 
 #define bool_opt(o) \
@@ -81,6 +86,15 @@ static void SetupCsv (csv_t *csv, HV *self)
 	STRLEN len;
 	csv->types = SvPV (*svp, len);
 	csv->types_len = len;
+	}
+    csv->eol = NULL;
+    csv->eol_is_cr = 0;
+    if ((svp = hv_fetch (self, "eol",      3, 0)) && *svp && SvOK (*svp)) {
+	STRLEN len;
+	csv->eol = SvPV (*svp, len);
+	csv->eol_len = len;
+	if (len == 1 && *csv->eol == '\015')
+	    csv->eol_is_cr = 1;
 	}
 
     csv->binary		= bool_opt ("binary");
@@ -206,9 +220,12 @@ static int Combine (csv_t *csv, SV *dst, AV *fields, SV *eol)
     return TRUE;
     } /* Combine */
 
-static void ParseError (csv_t *csv)
+static void ParseError (csv_t *csv, int ln)
 {
     if (csv->tmp) {
+#if MAINT_DEBUG
+	fprintf (stderr, "# Parse error on line %d: '%s'\n", ln, csv->tmp);
+#endif
 	if (hv_store (csv->self, "_ERROR_INPUT", 12, csv->tmp, 0))
 	    SvREFCNT_inc (csv->tmp);
 	}
@@ -242,12 +259,12 @@ static int CsvGet (csv_t *csv, SV *src)
 
 #define ERROR_INSIDE_QUOTES {			\
     SvREFCNT_dec (insideQuotes);		\
-    ParseError (csv);				\
+    ParseError (csv, __LINE__);			\
     return FALSE;				\
     }
 #define ERROR_INSIDE_FIELD {			\
     SvREFCNT_dec (insideField);			\
-    ParseError (csv);				\
+    ParseError (csv, __LINE__);			\
     return FALSE;				\
     }
 
@@ -306,7 +323,7 @@ restart:
 		}
 	    }
 	else
-	if (c == '\012') {
+	if (c == '\012') { /* \n */
 	    if (waitingForField) {
 		av_push (fields, newSVpv ("", 0));
 		if (csv->flags)
@@ -327,9 +344,16 @@ restart:
 		}
 	    }
 	else
-	if (c == '\015') {
+	if (c == '\015') { /* \r */
 	    if (waitingForField) {
-		int	c2 = CSV_GET;
+		int	c2;
+
+		if (csv->eol_is_cr) {
+		    c = '\012';
+		    goto restart;
+		    }
+
+		c2 = CSV_GET;
 
 		if (c2 == EOF) {
 		    insideField = newSVpv ("", 0);
@@ -356,7 +380,14 @@ restart:
 		CSV_PUT_SV (insideQuotes, c);
 		}
 	    else {
-		int	c2 = CSV_GET;
+		int	c2;
+
+		if (csv->eol_is_cr) {
+		    AV_PUSH (insideField);
+		    return TRUE;
+		    }
+
+		c2 = CSV_GET;
 
 		if (c2 == '\012') {
 		    AV_PUSH (insideField);
@@ -390,19 +421,23 @@ restart:
 			return TRUE;
 
 		    if (c2 == '\015') {
-			int	c3 = CSV_GET;
+			int	c3;
 
+			if (csv->eol_is_cr)
+			    return TRUE;
+
+			c3 = CSV_GET;
 			if (c3 == '\012')
 			    return TRUE;
 
-			ParseError (csv);
+			ParseError (csv, __LINE__);
 			return FALSE;
 			}
 
 		    if (c2 == '\012')
 			return TRUE;
 
-		    ParseError (csv);
+		    ParseError (csv, __LINE__);
 		    return FALSE;
 		    }
 
@@ -431,7 +466,14 @@ restart:
 
 		else {
 		    if (c2 == '\015') {
-			int	c3 = CSV_GET;
+			int	c3;
+
+			if (csv->eol_is_cr) {
+			    AV_PUSH (insideQuotes);
+			    return TRUE;
+			    }
+
+			c3 = CSV_GET;
 
 			if (c3 == '\012') {
 			    AV_PUSH (insideQuotes);

@@ -28,7 +28,7 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.26";
+$VERSION = "0.27";
 @ISA     = qw( DynaLoader );
 
 sub PV () { 0 }
@@ -191,7 +191,7 @@ sub is_quoted ($$;$)
 {
     my ($self, $idx, $val) = @_;
     ref $self->{_FFLAGS} &&
-	$idx >= 0 && $idx < @{$self->{_FFLAGS}} or return undef;
+	$idx >= 0 && $idx < @{$self->{_FFLAGS}} or return;
     $self->{_FFLAGS}[$idx] & 0x0001 ? 1 : 0;
     } # is_quoted
 
@@ -199,7 +199,7 @@ sub is_binary ($$;$)
 {
     my ($self, $idx, $val) = @_;
     ref $self->{_FFLAGS} &&
-	$idx >= 0 && $idx < @{$self->{_FFLAGS}} or return undef;
+	$idx >= 0 && $idx < @{$self->{_FFLAGS}} or return;
     $self->{_FFLAGS}[$idx] & 0x0002 ? 1 : 0;
     } # is_binary
 
@@ -317,6 +317,43 @@ Text::CSV_XS provides facilities for the composition and decomposition of
 comma-separated values.  An instance of the Text::CSV_XS class can combine
 fields into a CSV string and parse a CSV string into fields.
 
+The module accepts either strings or files as input and can utilize any
+user-specified characters as delimiters, separators, and escapes so it is
+perhaps better called ASV (anything separated values) rather than just CSV.
+
+=head2 Embedded newlines
+
+B<Important Note>: The default behaviour is to only accept ascii characters.
+This means that fields can not contain newlines. If your data contains 
+newlines embedded in fields, or characters above 0x7e (tilde), or binary data,
+you *must* set C<binary => 1> in the call to C<new ()>.  To cover the widest
+range of parsing options, you will always want to set binary.
+
+But you still have the problem that you have to pass a correct line to the
+C<parse ()> method, which is more complicated from the usual point of
+usage:
+
+ my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
+ while (<>) {
+     $csv->parse ($_);
+     my @fields = $csv->fields ();
+
+will break, as the while might read broken lines, as that doesn't care
+about the quoting. If you need to support embedd newlines, the way to go
+is either
+
+ use IO::Handle;
+ my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
+ while (my $row = $csv->getline (*ARGV)) {
+     my @fields = @$row;
+
+or, more safely in perl 5.6 and up
+
+ my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
+ open my $io, "<", $file or die "$file: $!";
+ while (my $row = $csv->getline ($io)) {
+     my @fields = @$row;
+ 
 =head1 FUNCTIONS
 
 =over 4
@@ -347,10 +384,25 @@ An end-of-line string to add to rows, usually C<undef> (nothing,
 default), C<"\012"> (Line Feed) or C<"\015\012"> (Carriage Return,
 Line Feed)
 
+If both C<$/> and C<eol> equal C<"\015">, parsing lines that end on
+only a Carriage Return without Line Feed, will be C<parse>d correct.
+Line endings, wheather in C<$/> or C<eol>, other than C<undef>,
+C<"\n">, C<"\r\n">, or C<"\r"> are not (yet) supported for parsing.
+
 =item escape_char
 
-The char used for escaping certain characters inside quoted fields,
-by default the same character. (C<">)
+The character used for escaping certain characters inside quoted fields.
+
+The C<escape_char> defaults to being the literal double-quote mark (C<">)
+in other words, the same as the default C<quote_char>. This means that
+doubling the quote mark in a field escapes it:
+
+  "foo","bar","Escape ""quote mark"" with two ""quote marks""","baz"
+
+If you change the default quote_char without changing the default
+escape_char, the escape_char will still be the quote mark.  If instead 
+you want to escape the quote_char by doubling it, you will need to change
+the escape_char to be the same as what you changed the quote_char to.
 
 The escape character can not be equal to the separation character.
 
@@ -440,7 +492,7 @@ and the resulting string is not really created, but immediately written
 to the I<$io> object, typically an IO handle or any other object that
 offers a I<print> method. Note, this implies that the following is wrong:
 
- open FILE, ">whatever";
+ open FILE, ">", "whatever";
  $status = $csv->print (\*FILE, $colref);
 
 The glob C<\*FILE> is not an object, thus it doesn't have a print
@@ -693,11 +745,17 @@ A CSV string may be terminated by 0x0A (line feed) or by 0x0D,0x0A
 
 =head1 TODO
 
+=over 2
+
+=item eol
+
 Discuss an option to make the eol honor the $/ setting. Maybe
 
   my $csv = Text::CSV_XS->new ({ eol => $/ });
 
 is already enough, and new options only make things less opaque.
+
+=item setting meta info
 
 Future extensions might include extending the C<fields_flags ()>,
 C<is_quoted ()>, and C<is_binary ()> to accept setting these flags
@@ -706,6 +764,8 @@ combine ()/string () combination.
 
   $csv->meta_info (0, 1, 1, 3, 0, 0);
   $csv->is_quoted (3, 1);
+
+=item parse returning undefined fields
 
 Adding an option that enables the parser to distinguish between
 empty fields and undefined fields, like
@@ -717,6 +777,55 @@ empty fields and undefined fields, like
 
 Then would return (undef, "", "1", "2", undef, "") in @fld, instead
 of the current ("", "", "1", "2", "", "").
+
+=item combined methods
+
+Adding means (methods) that combine C<combine ()> and C<string ()> in
+a single call. Likewise for C<parse ()> and C<fields ()>. Given the
+trouble with embedded newlines, maybe just allowing C<getline ()> and
+C<print ()> is sufficient.
+
+=item Unicode
+
+Make C<parse ()> and C<combine ()> do the right thing for Unicode
+(UTF-8) if requested. See t/50_utf8.t. More complicated, but evenly
+important, also for C<getline ()> and C<print ()>.
+
+=item Space delimited seperators
+
+Discuss if and how C<Text::CSV_XS> should/could support formats like
+
+   1 , "foo" , "bar" , 3.19 ,
+
+=item Double double quotes
+
+There seem to be applications around that write their dates like
+
+   1,4,""12/11/2004"",4,1
+
+If we would support that, in what way?
+
+=item Parse the whole file at once
+
+Implement a new methods that enables the parsing of a complete file
+at once, returning a lis of hashes. Possible extension to this could
+be to enable a column selection on the call:
+
+   my @AoH = $csv->parse_file ($filename, { cols => [ 1, 4..8, 12 ]});
+
+Returning something like
+
+   [ { fields => [ 1, 2, "foo", 4.5, undef, "", 8 ],
+       flags  => [ ... ],
+       errors => [ ... ],
+       },
+     { fields => [ ... ],
+       .
+       .
+       },
+     ]
+
+=back
 
 =head1 SEE ALSO
 
@@ -732,10 +841,13 @@ module.
 Jochen Wiedmann F<E<lt>joe@ispsoft.deE<gt>> rewrote the encoding and
 decoding in C by implementing a simple finite-state machine and added
 the variable quote, escape and separator characters, the binary mode
-and the print and getline methods.
+and the print and getline methods. See ChangeLog releases 0.10 through
+0.23.
 
-H.Merijn Brand F<E<lt>h.m.brand@xs4all.nlE<gt>> cleaned up the code
-and added the field flags methods.
+H.Merijn Brand F<E<lt>h.m.brand@xs4all.nlE<gt>> cleaned up the code,
+added the field flags methods, wrote the major part of the test suite,
+completed the documentation, fixed some RT bugs. See ChangeLog releases
+0.25 and on.
 
 =head1 COPYRIGHT AND LICENSE
 
