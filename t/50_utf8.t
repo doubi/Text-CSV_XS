@@ -4,6 +4,7 @@ use strict;
 $^W = 1;
 
 use Test::More;
+
 BEGIN {
     if ($] < 5.008) {
 	plan skip_all => "UTF8 tests useless in this ancient perl version";

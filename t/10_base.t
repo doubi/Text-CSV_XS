@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 48;
+use Test::More tests => 49;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -85,3 +85,8 @@ ok ( $csv->status (),					"status ()");
 ok (1,							"Integers and Reals");
 ok ( $csv->combine ("", 2, 3.4, "a", "a b"),		"Mixed - combine ()");
 is ( $csv->string, ',2,3.4,a,"a b"',			"Mixed - string ()");
+
+# New from object
+ok ($csv->new (),					"\$csv->new ()");
+
+1;

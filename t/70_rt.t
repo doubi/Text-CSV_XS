@@ -4,7 +4,7 @@ use strict;
 $^W = 1;
 
 #use Test::More "no_plan";
- use Test::More tests => 46;
+ use Test::More tests => 52;
 
 BEGIN {
     use_ok "Text::CSV_XS", ();
@@ -76,6 +76,23 @@ while (<DATA>) {
     # used for the special characters
     ok (!$csv->parse ($input{18703}[1]), "Line 2");
     }
+
+{   # http://rt.cpan.org/Ticket/Display.html?id=15076
+    # 15076: escape_char before characters that do not need to be escaped.
+    my ($csv, @fld);
+    ok ($csv = Text::CSV_XS->new ({
+	sep_char		=> ";",
+	escape_char		=> "\\",
+	allow_loose_escapes	=> 1,
+	}), "RT-15076: escape chars ....");
+
+    ok ($csv->parse ($input{15076}[0]), "Line 1");
+    ok (@fld = $csv->fields, "Fields");
+    is (scalar @fld, 2, "Line 1 has two fields");
+    is ($fld[0], "Example", "Content field 1");
+    is ($fld[1], "It's an apostrophee", "Content field 2");
+    }
+
 __END__
 «24386» - \t doesn't work in _XS, works in _PP
 VIN	StockNumber	Year	Make	Model	MD	Engine	EngineSize	Transmission	DriveTrain	Trim	BodyStyle	CityFuel	HWYFuel	Mileage	Color	InteriorColor	InternetPrice	RetailPrice	Notes	ShortReview	Certified	NewUsed	Image_URLs	Equipment
@@ -94,3 +111,5 @@ VIN	StockNumber	Year	Make	Model	MD	Engine	EngineSize	Transmission	DriveTrain	Tri
 ~Style Name~
 ~5dr Crew Cab 130" WB 2WD LS~
 ",~"~,~""~,~"""~,,~~,
+«15076» - escape_char before characters that do not need to be escaped.
+"Example";"It\'s an apostrophee"

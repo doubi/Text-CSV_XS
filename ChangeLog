@@ -1,3 +1,15 @@
+2007-06-03  0.28 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* IMPORTANT CHANGE: new () returns undef if it gets unsupported
+	  attributes. Until now, new ({ esc_char => "\\" }) was just
+	  silently ignored. Rejecting it and failing is better than
+	  continuing with false assumptions.
+	* Added allow_loose_quotes  (see doc)
+	* Added t/65_allow.t
+	* Added allow_loose_escapes (see doc) RT 15076
+	* More code cleanup in XS
+	* Added allow_whitespace    (see doc)
+
 2007-05-31  0.27 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* checked with perlcritic (still works under 5.00504)

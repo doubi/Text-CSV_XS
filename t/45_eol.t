@@ -3,8 +3,7 @@
 use strict;
 $^W = 1;
 
-#use Test::More "no_plan";
- use Test::More tests => 128;
+use Test::More tests => 128;
 
 BEGIN {
     require_ok "Text::CSV_XS";

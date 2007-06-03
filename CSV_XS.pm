@@ -28,7 +28,7 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.27";
+$VERSION = "0.28";
 @ISA     = qw( DynaLoader );
 
 sub PV () { 0 }
@@ -50,30 +50,40 @@ sub version
 #   class/object method expecting no arguments and returning a reference to
 #   a newly created Text::CSV object.
 
+my %def_attr = (
+    quote_char		=> '"',
+    escape_char		=> '"',
+    sep_char		=> ',',
+    eol			=> '',
+    always_quote	=> 0,
+    binary		=> 0,
+    keep_meta_info	=> 0,
+    allow_loose_quotes	=> 0,
+    allow_loose_escapes	=> 0,
+    allow_whitespace	=> 0,
+    types		=> undef,
+
+    _STATUS		=> undef,
+    _FIELDS		=> undef,
+    _FFLAGS		=> undef,
+    _STRING		=> undef,
+    _ERROR_INPUT	=> undef,
+    );
+
 sub new ($;$)
 {
     my $proto = shift;
     my $attr  = shift || {};
-    my $class = ref ($proto) || $proto;
-    my $self  = {
-	quote_char	=> '"',
-	escape_char	=> '"',
-	sep_char	=> ',',
-	eol		=> '',
-	always_quote	=> 0,
-	binary		=> 0,
-	keep_meta_info	=> 0,
-
-	_STATUS		=> undef,
-	_FIELDS		=> undef,
-	_FFLAGS		=> undef,
-	_STRING		=> undef,
-	_ERROR_INPUT	=> undef,
-
-	%$attr,
-	};
+    my $class = ref ($proto) || $proto	or return;
+    for (keys %$attr) {
+	m/^[a-z]/ && exists $def_attr{$_} and next;
+#	croak?
+#	print STDERR "### Cannot set attribute '$_'\n";
+	return;
+	}
+    my $self  = {%def_attr, %$attr};
     bless $self, $class;
-    exists $self->{types} and $self->types ($self->{types});
+    defined $self->{types} and $self->types ($self->{types});
     $self;
     } # new
 
@@ -127,6 +137,27 @@ sub keep_meta_info ($;$)
     @_ and $self->{keep_meta_info} = shift;
     $self->{keep_meta_info};
     } # keep_meta_info
+
+sub allow_loose_quotes ($;$)
+{
+    my $self = shift;
+    @_ and $self->{allow_loose_quotes} = shift;
+    $self->{allow_loose_quotes};
+    } # allow_loose_quotes
+
+sub allow_loose_escapes ($;$)
+{
+    my $self = shift;
+    @_ and $self->{allow_loose_escapes} = shift;
+    $self->{allow_loose_escapes};
+    } # allow_loose_escapes
+
+sub allow_whitespace ($;$)
+{
+    my $self = shift;
+    @_ and $self->{allow_whitespace} = shift;
+    $self->{allow_whitespace};
+    } # allow_whitespace
 
 # status
 #
@@ -370,14 +401,6 @@ Currently the following attributes are available:
 
 =over 4
 
-=item quote_char
-
-The char used for quoting fields containing blanks, by default the
-double quote character (C<">). A value of undef suppresses
-quote chars. (For simple cases only).
-
-The quote character can not be equal to the separation character.
-
 =item eol
 
 An end-of-line string to add to rows, usually C<undef> (nothing,
@@ -388,6 +411,53 @@ If both C<$/> and C<eol> equal C<"\015">, parsing lines that end on
 only a Carriage Return without Line Feed, will be C<parse>d correct.
 Line endings, wheather in C<$/> or C<eol>, other than C<undef>,
 C<"\n">, C<"\r\n">, or C<"\r"> are not (yet) supported for parsing.
+
+=item sep_char
+
+The char used for separating fields, by default a comma. (C<,>)
+
+The separation character can not be equal to the quote character.
+The separation character can not be equal to the escape character.
+
+=item allow_whitespace
+
+When this option is set to true, whitespace (TAB's and SPACE's)
+surrounding the separation character is removed when parsing. So
+lines like:
+
+  1 , "foo" , bar , 3 , zapp
+
+are now correctly parsed, even though it violates the CSV specs.
+Note that B<all> whitespace is stripped from start and end of each
+field. That would make is more a I<feature> than a way to be able
+to parse bad CSV lines, as
+
+ 1,   2.0,  3,   ape  , monkey
+
+will now be parsed as
+
+ ("1", "2.0", "3", "ape", "monkey")
+
+even if the original line was perfectly sane CSV.
+
+=item quote_char
+
+The char used for quoting fields containing blanks, by default the
+double quote character (C<">). A value of undef suppresses
+quote chars. (For simple cases only).
+
+The quote character can not be equal to the separation character.
+
+=item allow_loose_quotes
+
+By default, parsing fields that have C<quote_char> characters inside
+an unquoted field, like
+
+ 1,foo "bar" baz,42
+
+would result in a parse error. Though it is still bad practice to
+allow this format, we cannot help there are some vendors that make
+their applications spit out lines styled like this.
 
 =item escape_char
 
@@ -406,12 +476,17 @@ the escape_char to be the same as what you changed the quote_char to.
 
 The escape character can not be equal to the separation character.
 
-=item sep_char
+=item allow_loose_escapes
 
-The char used for separating fields, by default a comma. (C<,>)
+By default, parsing fields that have C<escapee_char> characters that
+escape characters that do not need to be escaped, like:
 
-The separation character can not be equal to the quote character.
-The separation character can not be equal to the escape character.
+ my $csv = Text::CSV_XS->new ({ esc_char => "\\" });
+ $csv->parse (qq{1,"my bar\'s",baz,42});
+
+would result in a parse error. Though it is still bad practice to
+allow this format, this option enables you to treat all escape character
+sequences equal.
 
 =item binary
 
@@ -803,7 +878,8 @@ There seem to be applications around that write their dates like
 
    1,4,""12/11/2004"",4,1
 
-If we would support that, in what way?
+If we would support that, probably through allow_double_quoted
+Definitely belongs in t/65_allow.t
 
 =item Parse the whole file at once
 
@@ -824,6 +900,33 @@ Returning something like
        .
        },
      ]
+
+=back
+
+=head1 Release plan
+
+=over 2
+
+=item 0.29
+
+ - allow_loose_quotes
+ - allow_loose_escapes
+ - allow_whitespace
+
+=item 0.30
+
+ - croak / carp
+ - error cause
+ - return undef
+
+=item 0.31
+
+ - allow_double_quoted
+ - utf8
+
+=item 0.32
+
+ - csv2csv - a script to regenerate a CSV file to follow standards
 
 =back
 
