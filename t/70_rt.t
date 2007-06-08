@@ -26,8 +26,6 @@ while (<DATA>) {
 {   # http://rt.cpan.org/Ticket/Display.html?id=24386
     # #24386: \t doesn't work in _XS, works in _PP
 
-    use Data::Dumper;
-
     my @lines = @{$input{24386}};
 
     ok (my $csv = Text::CSV_XS->new ({ sep_char => "\t" }), "RT-24386: \\t doesn't work");

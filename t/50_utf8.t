@@ -17,29 +17,8 @@ BEGIN {
 BEGIN {
     require_ok "Text::CSV_XS";
     plan skip_all => "Cannot load Text::CSV_XS" if $@;
+    require "t/util.pl";
     }
-
-sub _readable ($)
-{
-    join "", map {
-	my $cp = ord $_;
-	$cp >= 0x20 && $cp <= 0x7e
-	    ? $_
-	    : sprintf "\\x{%02x}", $cp;
-	} split m//, $_[0];
-    } # _readable
-
-sub is_binary ($$$)
-{
-    my ($str, $exp, $tst) = @_;
-    if ($str eq $exp) {
-	ok (1,		$tst);
-	}
-    else {
-	my ($hs, $he) = map { _readable $_ } $str, $exp;
-	is ($hs, $he,	$tst);
-	}
-    } # is_binary
 
 my $csv = Text::CSV_XS->new ({ binary => 1, always_quote => 1 });
 

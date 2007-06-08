@@ -1,3 +1,38 @@
+2007-06-08  0.29 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* Removed an unused 'use Data::Dumper'
+	* Added $csv->eof () RT 27424
+	* Two typo's in the doc's (Amsterdam.pm)
+	* Modified examples/speed.pl to better show the diffs between versions
+	* Cache attribute settings and regain speed of 0.23! anmd beyond
+	  Relative overall speeds (YMMV, use examples/speed.pl to check),
+	  the 1.0x versions are from Text::CSV_PP.
+
+			0.23 0.25 0.26 0.27 0.28 0.29 1.00 1.02 1.05
+			==== ==== ==== ==== ==== ==== ==== ==== ====
+	    combine   1   62   61   61   60   58  100   14   14   14
+	    combine  10   41   41   41   42   42  100    6    6    6
+	    combine 100   35   35   36   36   36  100    5    5    5
+	    parse     1  100   92   87   90   81   96   19   19   17
+	    parse    10   95  100   86   97   94   94   15   16   14
+	    parse   100   90   95   84   94   92  100   16   16   14
+	    print    io   93   89   91   91   95  100    0    0    6
+	    getline  io   90   92   84   87   89  100    0    0   13
+			---- ---- ---- ---- ---- ---- ---- ---- ----
+	    average       75   75   71   74   73   98    9    9   11
+
+	* Removed prototypes
+	* Added a SPECIFICATION section to the pod
+	* Safe caching of eol, and a warning in the docs
+	* Rewrote t/20_file.t do do actual file IO instead of IO_Scalar fake
+	* Small optimilisation for parse (juerd)
+	* Added make target test_speed
+	* Merged the items from CAVEAT to SPECIFICATION
+	* Updated the TODO and Release Plan sections
+	* Speed up internals by using references instead of copies (juerd)
+	* Reworked error_input, which also had an undetected internal error
+	* Added IO tests for lexical IO handles and perlio IO to/from scalars
+
 2007-06-03  0.28 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* IMPORTANT CHANGE: new () returns undef if it gets unsupported

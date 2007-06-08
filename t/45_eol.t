@@ -8,21 +8,10 @@ use Test::More tests => 128;
 BEGIN {
     require_ok "Text::CSV_XS";
     plan skip_all => "Cannot load Text::CSV_XS" if $@;
+    require "t/util.pl";
     }
 
 $| = 1;
-
-sub is_binary ($$$)
-{
-    my ($str, $exp, $tst) = @_;
-    if ($str eq $exp) {
-	ok (1,		$tst);
-	}
-    else {
-	my ($hs, $he) = map { unpack "H*", $_ } $str, $exp;
-	is ($hs, $he,	$tst);
-	}
-    } # is_binary
 
 # Embedded newline tests
 
@@ -30,7 +19,8 @@ use IO::Handle;
 
 foreach my $rs ("\n", "\r\n", "\r") {
 
-    my $csv = Text::CSV_XS->new ({ binary => 1, eol => ($/ = $rs) });
+    my $csv = Text::CSV_XS->new ({ binary => 1 });
+       $csv->eol ($/ = $rs);
 
     foreach my $pass (0, 1) {
 	if ($pass == 0) {

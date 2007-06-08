@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 49;
+use Test::More tests => 50;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -34,6 +34,7 @@ ok ($empty->new,					"new () based on object");
 my $csv;
 ok ($csv = Text::CSV_XS->new,				"new ()");
 is ($csv->fields, undef,				"fields () before parse ()");
+is ($csv->string, undef,				"string () undef before combine");
 
 # Important: Do not modify these tests unless you have a good
 # reason. This file ought to guarantee compatibility to Text::CSV.

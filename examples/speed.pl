@@ -3,56 +3,54 @@
 require 5.005;
 use strict;
 
-require Text::CSV_XS;
-require Benchmark;
+use IO::Handle;
+use Text::CSV_XS;
+use Benchmark qw(:all);
 
-my @fields = (
+my $csv = Text::CSV_XS->new ({ eol => "\n" });
+
+my $bigfile = "_file.csv";
+my @fields1 = (
     "Wiedmann", "Jochen",
     "Am Eisteich 9",
     "72555 Metzingen",
     "Germany",
     "+49 7123 14881",
     "joe\@ispsoft,de");
+my @fields10  = (@fields1) x 10;
+my @fields100 = (@fields1) x 100;
 
-my ($count, $csv) = (1_000_000, Text::CSV_XS->new);
+$csv->combine (@fields1  ); my $str1   = $csv->string;
+$csv->combine (@fields10 ); my $str10  = $csv->string;
+$csv->combine (@fields100); my $str100 = $csv->string;
 
-print "Testing row creation speed ...\n";
-my $t1 = Benchmark->new;
-for (1 .. $count) {
-    $csv->combine (@fields);
-    }
-my $td  = Benchmark::timediff (Benchmark->new, $t1);
-my $dur = $td->cpu_a;
-printf "$count rows created in %5.2f cpu+sys seconds (%8d per sec)\n\n",
-   $dur, $count / $dur;
+timethese (-10, {
 
-print "Testing row parsing speed (short string) ...\n";
-my $str = $csv->string;
-$t1 = Benchmark->new;
-for (1 .. $count) {
-    $csv->parse ($str);
-    }
-$td  = Benchmark::timediff (Benchmark->new, $t1);
-$dur = $td->cpu_a;
-printf "$count rows parsed  in %5.2f cpu+sys seconds (%8d per sec)\n\n",
-   $dur, $count / $dur;
+    "combine   1"	=> sub { $csv->combine (@fields1  ) },
+    "combine  10"	=> sub { $csv->combine (@fields10 ) },
+    "combine 100"	=> sub { $csv->combine (@fields100) },
 
-print "Testing row parsing speed (long string) ...\n";
-$str = join ",", ($str) x 100;
-my $lcount = $count / 100;
-$t1 = Benchmark->new;
-for (1 .. $lcount) {
-    $csv->parse ($str);
-    }
-$td  = Benchmark::timediff (Benchmark->new, $t1);
-$dur = $td->cpu_a;
-printf "  $lcount rows parsed  in %5.2f cpu+sys seconds (%8d per sec)\n\n",
-   $dur, $lcount / $dur;
+    "parse     1"	=> sub { $csv->parse   ($str1     ) },
+    "parse    10"	=> sub { $csv->parse   ($str10    ) },
+    "parse   100"	=> sub { $csv->parse   ($str100   ) },
 
+    });
 
+open my $io, ">", $bigfile;
+$csv->print ($io, \@fields10) or die "Cannot print ()\n";
+timethese (500_000, { "print    io" => sub { $csv->print ($io, \@fields10) }});
+close   $io;
+-s $bigfile or die "File is empty!\n";
+open    $io, "<", $bigfile;
+timethese (500_000, { "getline  io" => sub { my $ref = $csv->getline ($io) }});
+close   $io;
+print "File was ", -s $bigfile, " bytes long, line length ", length ($str10), "\n";
+unlink $bigfile;
+
+__END__
 # The examples from the docs
 
-{ my $csv = Text::CSV_XS->new ({ keep_meta_info => 1, binary => 1 });
+{ $csv = Text::CSV_XS->new ({ keep_meta_info => 1, binary => 1 });
 
   my $sample_input_string =
       qq{"I said, ""Hi!""",Yes,"",2.34,,"1.09","\x{20ac}",};

@@ -4,7 +4,16 @@ use strict;
 $^W = 1;	# use warnings;
 $|  = 1;
 
-use Test::More tests => 61;
+use Test::More;
+
+BEGIN {
+    if ($] < 5.006) {
+	plan skip_all => "No lexical file handles in in this ancient perl version";
+	}
+    else {
+	plan tests => 61;
+	}
+    }
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -13,9 +22,10 @@ BEGIN {
 
 use IO::Handle;
 
+my $io;
 my $csv = Text::CSV_XS->new ();
 
-ok (!$csv->print (*FH, ["abc", "def\007", "ghi"]), "print bad character");
+ok (!$csv->print ($io, ["abc", "def\007", "ghi"]), "print bad character");
 
 for ( [  1, 1, 1, '""'				],
       [  2, 1, 1, '', ''			],
@@ -33,16 +43,16 @@ for ( [  1, 1, 1, '""'				],
       ) {
     my ($tst, $validp, $validg, @arg, $row) = @$_;
 
-    open  FH, ">_test.csv" or die "_test.csv: $!";
-    is ($csv->print (*FH, \@arg), $validp||"", "$tst - print ()");
-    close FH;
+    open  $io, ">_test.csv" or die "_test.csv: $!";
+    is ($csv->print ($io, \@arg), $validp||"", "$tst - print ()");
+    close $io;
 
-    open  FH, ">_test.csv" or die "_test.csv: $!";
-    print FH join ",", @arg;
-    close FH;
+    open  $io, ">_test.csv" or die "_test.csv: $!";
+    print $io join ",", @arg;
+    close $io;
 
-    open  FH, "<_test.csv" or die "_test.csv: $!";
-    $row = $csv->getline (*FH);
+    open  $io, "<_test.csv" or die "_test.csv: $!";
+    $row = $csv->getline ($io);
     unless ($validg) {
 	is ($row, undef, "$tst - false getline ()");
 	next;
@@ -60,16 +70,16 @@ unlink "_test.csv";
 # This test because of a problem with DBD::CSV
 
 ok (1, "Tests for DBD::CSV");
-open  FH, ">_test.csv" or die "_test.csv: $!";
+open  $io, ">_test.csv" or die "_test.csv: $!";
 $csv->binary (1);
 $csv->eol    ("\r\n");
-ok ($csv->print (*FH, [ "id", "name"			]), "Bad character");
-ok ($csv->print (*FH, [   1,  "Alligator Descartes"	]), "Name 1");
-ok ($csv->print (*FH, [  "3", "Jochen Wiedmann"		]), "Name 2");
-ok ($csv->print (*FH, [   2,  "Tim Bunce"		]), "Name 3");
-ok ($csv->print (*FH, [ " 4", "Andreas König"		]), "Name 4");
-ok ($csv->print (*FH, [   5				]), "Name 5");
-close FH;
+ok ($csv->print ($io, [ "id", "name"			]), "Bad character");
+ok ($csv->print ($io, [   1,  "Alligator Descartes"	]), "Name 1");
+ok ($csv->print ($io, [  "3", "Jochen Wiedmann"		]), "Name 2");
+ok ($csv->print ($io, [   2,  "Tim Bunce"		]), "Name 3");
+ok ($csv->print ($io, [ " 4", "Andreas König"		]), "Name 4");
+ok ($csv->print ($io, [   5				]), "Name 5");
+close $io;
 
 my $expected = <<"CONTENTS";
 id,name\015
@@ -80,21 +90,21 @@ id,name\015
 5\015
 CONTENTS
 
-open  FH, "<_test.csv" or die "_test.csv: $!";
-my $content = do { local $/; <FH> };
-close FH;
+open  $io, "<_test.csv" or die "_test.csv: $!";
+my $content = do { local $/; <$io> };
+close $io;
 is ($content, $expected, "Content");
-open  FH, ">_test.csv" or die "_test.csv: $!";
-print FH $content;
-close FH;
-open  FH, "<_test.csv" or die "_test.csv: $!";
+open  $io, ">_test.csv" or die "_test.csv: $!";
+print $io $content;
+close $io;
+open  $io, "<_test.csv" or die "_test.csv: $!";
 
 my $fields;
 print "# Retrieving data\n";
 for (0 .. 5) {
-    ok ($fields = $csv->getline (*FH),			"Fetch field $_");
+    ok ($fields = $csv->getline ($io),			"Fetch field $_");
     is ($csv->eof, "",					"EOF");
     print "# Row $_: $fields (@$fields)\n";
     }
-is ($csv->getline (*FH), undef,				"Fetch field 6");
+is ($csv->getline ($io), undef,				"Fetch field 6");
 is ($csv->eof, 1,					"EOF");

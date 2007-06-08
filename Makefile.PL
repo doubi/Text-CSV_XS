@@ -45,5 +45,8 @@ sub postamble
 	'	cover -delete',
 	'	HARNESS_PERL_SWITCHES=-MDevel::Cover $(MAKE) test',
 	'	cover',
+	'',
+	'test_speed: pure_all',
+	'	PERL_DL_NONLAZY=1 $(FULLPERLRUN) -I"$(INST_LIB)" -I"$(INST_ARCHLIB)" examples/speed.pl',
 	'';
     } # postamble

@@ -3,24 +3,13 @@
 use strict;
 $^W = 1;
 
-use Test::More tests => 21;
+use Test::More tests => 24;
 
 BEGIN {
     require_ok "Text::CSV_XS";
     plan skip_all => "Cannot load Text::CSV_XS" if $@;
+    require "t/util.pl";
     }
-
-sub is_binary ($$$)
-{
-    my ($str, $exp, $tst) = @_;
-    if ($str eq $exp) {
-	ok (1,		$tst);
-	}
-    else {
-	my ($hs, $he) = map { unpack "H*", $_ } $str, $exp;
-	is ($hs, $he,	$tst);
-	}
-    } # is_binary
 
 $| = 1;
 
@@ -53,6 +42,13 @@ ok ($csv->combine (@binField),					"combine ()");
 is_binary ($csv->string,
 	   qq("abc"0def\n\rghi","ab""ce,\032""'",\377\n),	"string ()");
 
+ok (1,								"eol ,xxxxxxx\\n");
+$csv->eol (",xxxxxxx\n");
+ok ($csv->combine (@binField),					"combine ()");
+is_binary ($csv->string,
+	   qq("abc"0def\n\rghi","ab""ce,\032""'",\377,xxxxxxx\n),	"string ()");
+
+$csv->eol ("\n");
 ok (1,								"quote_char undef");
 $csv->quote_char (undef);
 ok ($csv->combine ("abc","def","ghi"),				"combine");

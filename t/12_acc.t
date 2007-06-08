@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 28;
+use Test::More tests => 29;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -32,6 +32,7 @@ is ($csv->string,
 
 is ($csv->sep_char (";"),		';',		"sep_char (;)");
 is ($csv->quote_char ("="),		'=',		"quote_char (=)");
+is ($csv->eol ("\r"),			"\r",		"eol (\\r)");
 is ($csv->keep_meta_info (1),		1,		"keep_meta_info (1)");
 is ($csv->always_quote (1),		1,		"always_quote (1)");
 is ($csv->allow_loose_quotes (1),	1,		"allow_loose_quotes (1)");
@@ -40,7 +41,7 @@ is ($csv->allow_whitespace (1),		1,		"allow_whitespace (1)");
 is ($csv->escape_char ("\\"),		"\\",		"escape_char (\\)");
 ok ($csv->combine (@fld),				"combine");
 is ($csv->string,
-    qq{=txt \\=, "Hi!"=;=Yes=;==;=2=;;=1.09=;=\r=;},	"string");
+    qq{=txt \\=, "Hi!"=;=Yes=;==;=2=;;=1.09=;=\r=;\r},	"string");
 
 # And test erroneous calls
 

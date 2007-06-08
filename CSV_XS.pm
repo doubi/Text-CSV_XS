@@ -28,12 +28,12 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.28";
+$VERSION = "0.29";
 @ISA     = qw( DynaLoader );
 
-sub PV () { 0 }
-sub IV () { 1 }
-sub NV () { 2 }
+sub PV { 0 }
+sub IV { 1 }
+sub NV { 2 }
 
 # version
 #
@@ -63,6 +63,7 @@ my %def_attr = (
     allow_whitespace	=> 0,
     types		=> undef,
 
+    _EOF		=> 0,
     _STATUS		=> undef,
     _FIELDS		=> undef,
     _FFLAGS		=> undef,
@@ -70,7 +71,7 @@ my %def_attr = (
     _ERROR_INPUT	=> undef,
     );
 
-sub new ($;$)
+sub new
 {
     my $proto = shift;
     my $attr  = shift || {};
@@ -87,75 +88,117 @@ sub new ($;$)
     $self;
     } # new
 
+my %_cache_id = (	# Keep in sync with XS!
+    quote_char		=>  0,
+    escape_char		=>  1,
+    sep_char		=>  2,
+    binary		=>  3,
+    keep_meta_info	=>  4,
+    always_quote	=>  5,
+    allow_loose_quotes	=>  6,
+    allow_loose_escapes	=>  7,
+    allow_whitespace	=>  8,
+    allow_double_quoted	=>  9,
+
+    eol			=> 10,	# 10 .. 17
+    eol_len		=> 18,
+    eol_is_cr		=> 19,
+    has_types		=> 20,
+    );
+sub _set_attr
+{
+    my ($self, $name, $val) = @_;
+    $self->{$name} = $val;
+    $self->{_CACHE} or return;
+    my @cache = unpack "C*", $self->{_CACHE};
+    $cache[$_cache_id{$name}] = defined $val ? ord $val : 0;
+    $self->{_CACHE} = pack "C*", @cache;
+    } # _set_attr
+
 # Accessor methods.
 #   It is unwise to change them halfway through a single file!
-sub quote_char ($;$)
+sub quote_char
 {
     my $self = shift;
-    @_ and $self->{quote_char} = shift;
+    @_ and $self->_set_attr ("quote_char", shift);
     $self->{quote_char};
     } # quote_char
 
-sub escape_char ($;$)
+sub escape_char
 {
     my $self = shift;
-    @_ and $self->{escape_char} = shift;
+    @_ and $self->_set_attr ("escape_char", shift);
     $self->{escape_char};
     } # escape_char
 
-sub sep_char ($;$)
+sub sep_char
 {
     my $self = shift;
-    @_ and $self->{sep_char} = shift;
+    @_ and $self->_set_attr ("sep_char", shift);
     $self->{sep_char};
     } # sep_char
 
-sub eol ($;$)
+sub eol
 {
     my $self = shift;
-    @_ and $self->{eol} = shift;
+    if (@_) {
+	my $eol = shift;
+	my $eol_len = length $eol;
+	$self->{eol} = $eol;
+	$self->{_CACHE} or return;
+	my @cache = unpack "C*", $self->{_CACHE};
+	if (($cache[$_cache_id{eol_len}] = $eol_len) < 8) {
+	    $cache[$_cache_id{eol_is_cr}] = $eol eq "\r" ? 1 : 0;
+	    }
+	else {
+	    $cache[$_cache_id{eol_is_cr}] = 0;
+	    }
+	$eol .= "\0\0\0\0\0\0\0\0";
+	$cache[$_cache_id{eol} + $_] = ord substr $eol, $_, 1 for 0 .. 7;
+	$self->{_CACHE} = pack "C*", @cache;
+	}
     $self->{eol};
     } # eol
 
-sub always_quote ($;$)
+sub always_quote
 {
     my $self = shift;
-    @_ and $self->{always_quote} = shift;
+    @_ and $self->_set_attr ("always_quote", shift);
     $self->{always_quote};
     } # always_quote
 
-sub binary ($;$)
+sub binary
 {
     my $self = shift;
-    @_ and $self->{binary} = shift;
+    @_ and $self->_set_attr ("binary", shift);
     $self->{binary};
     } # binary
 
-sub keep_meta_info ($;$)
+sub keep_meta_info
 {
     my $self = shift;
-    @_ and $self->{keep_meta_info} = shift;
+    @_ and $self->_set_attr ("keep_meta_info", shift);
     $self->{keep_meta_info};
     } # keep_meta_info
 
-sub allow_loose_quotes ($;$)
+sub allow_loose_quotes
 {
     my $self = shift;
-    @_ and $self->{allow_loose_quotes} = shift;
+    @_ and $self->_set_attr ("allow_loose_quotes", shift);
     $self->{allow_loose_quotes};
     } # allow_loose_quotes
 
-sub allow_loose_escapes ($;$)
+sub allow_loose_escapes
 {
     my $self = shift;
-    @_ and $self->{allow_loose_escapes} = shift;
+    @_ and $self->_set_attr ("allow_loose_escapes", shift);
     $self->{allow_loose_escapes};
     } # allow_loose_escapes
 
-sub allow_whitespace ($;$)
+sub allow_whitespace
 {
     my $self = shift;
-    @_ and $self->{allow_whitespace} = shift;
+    @_ and $self->_set_attr ("allow_whitespace", shift);
     $self->{allow_whitespace};
     } # allow_whitespace
 
@@ -164,10 +207,16 @@ sub allow_whitespace ($;$)
 #   object method returning the success or failure of the most recent
 #   combine () or parse ().  there are no side-effects.
 
-sub status ($)
+sub status
 {
     my $self = shift;
     return $self->{_STATUS};
+    } # status
+
+sub eof
+{
+    my $self = shift;
+    return $self->{_EOF};
     } # status
 
 # error_input
@@ -175,7 +224,7 @@ sub status ($)
 #   object method returning the first invalid argument to the most recent
 #   combine () or parse ().  there are no side-effects.
 
-sub error_input ($)
+sub error_input
 {
     my $self = shift;
     return $self->{_ERROR_INPUT};
@@ -187,10 +236,10 @@ sub error_input ($)
 #   input to the most recent parse (), whichever is more recent.  there are
 #   no side-effects.
 
-sub string ($)
+sub string
 {
     my $self = shift;
-    return $self->{_STRING};
+    return ref $self->{_STRING} ? ${$self->{_STRING}} : undef;
     } # string
 
 # fields
@@ -199,7 +248,7 @@ sub string ($)
 #   input to the most recent combine (), whichever is more recent.  there
 #   are no side-effects.
 
-sub fields ($)
+sub fields
 {
     my $self = shift;
     return ref $self->{_FIELDS} ? @{$self->{_FIELDS}} : undef;
@@ -212,13 +261,13 @@ sub fields ($)
 #   are no side-effects. meta_info () returns (if available)  some of the
 #   field's properties
 
-sub meta_info ($)
+sub meta_info
 {
     my $self = shift;
     return ref $self->{_FFLAGS} ? @{$self->{_FFLAGS}} : undef;
     } # meta_info
 
-sub is_quoted ($$;$)
+sub is_quoted
 {
     my ($self, $idx, $val) = @_;
     ref $self->{_FFLAGS} &&
@@ -226,7 +275,7 @@ sub is_quoted ($$;$)
     $self->{_FFLAGS}[$idx] & 0x0001 ? 1 : 0;
     } # is_quoted
 
-sub is_binary ($$;$)
+sub is_binary
 {
     my ($self, $idx, $val) = @_;
     ref $self->{_FFLAGS} &&
@@ -245,17 +294,14 @@ sub is_binary ($$;$)
 #      setting string ()
 #      setting error_input ()
 
-sub combine ($@)
+sub combine
 {
-    my ($self, @part) = @_;
+    my $self = shift;
     my $str  = "";
-    my $ref  = \$str;
-    $self->{_FIELDS}      = \@part;
-    $self->{_FFLAGS}      = undef;
-    $self->{_ERROR_INPUT} = undef;
-    $self->{_STATUS}      =
-	(@part > 0) && $self->Combine (\$str, \@part, 0, $self->{eol});
-    $self->{_STRING}      = $str;
+    $self->{_FIELDS} = \@_;
+    $self->{_FFLAGS} = undef;
+    $self->{_STATUS} = (@_ > 0) && $self->Combine (\$str, \@_, 0);
+    $self->{_STRING} = \$str;
     $self->{_STATUS};
     } # combine
 
@@ -271,20 +317,23 @@ sub combine ($@)
 #      setting string ()
 #      setting error_input ()
 
-sub parse ($$)
+sub parse
 {
     my ($self, $str) = @_;
 
     my $fields = [];
     my $fflags = [];
-    $self->{_STRING} = $self->{ERROR_INPUT} = $str;
-    $self->{_STATUS} = 0;
-    $self->{_FIELDS} = undef;
-    $self->{_FFLAGS} = undef;
-    if (defined $str  && $self->Parse ($str, $fields, $fflags, 0)) {
+    $self->{_STRING} = \$str;
+    if (defined $str && $self->Parse ($str, $fields, $fflags, 0)) {
+	$self->{_ERROR_INPUT} = undef;
 	$self->{_FIELDS} = $fields;
 	$self->{_FFLAGS} = $fflags;
 	$self->{_STATUS} = 1;
+	}
+    else {
+	$self->{_FIELDS} = undef;
+	$self->{_FFLAGS} = undef;
+	$self->{_STATUS} = 0;
 	}
     $self->{_STATUS};
     } # parse
@@ -339,6 +388,8 @@ Text::CSV_XS - comma-separated values manipulation routines
  $colref = $csv->getline ($io);        # Read a line from file $io,
                                        # parse it and return an array
                                        # ref of fields
+ $eof = $csv->eof ();                  # Indicate if last parse or
+                                       # getline () hit End Of File
 
  $csv->types (\@t_array);              # Set column types
 
@@ -354,7 +405,7 @@ perhaps better called ASV (anything separated values) rather than just CSV.
 
 =head2 Embedded newlines
 
-B<Important Note>: The default behaviour is to only accept ascii characters.
+B<Important Note>: The default behavior is to only accept ascii characters.
 This means that fields can not contain newlines. If your data contains 
 newlines embedded in fields, or characters above 0x7e (tilde), or binary data,
 you *must* set C<binary => 1> in the call to C<new ()>.  To cover the widest
@@ -365,12 +416,12 @@ C<parse ()> method, which is more complicated from the usual point of
 usage:
 
  my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
- while (<>) {
+ while (<>) {		#  WRONG!
      $csv->parse ($_);
      my @fields = $csv->fields ();
 
 will break, as the while might read broken lines, as that doesn't care
-about the quoting. If you need to support embedd newlines, the way to go
+about the quoting. If you need to support embedded newlines, the way to go
 is either
 
  use IO::Handle;
@@ -385,6 +436,88 @@ or, more safely in perl 5.6 and up
  while (my $row = $csv->getline ($io)) {
      my @fields = @$row;
  
+=head1 SPECIFICATION
+
+While no formal specification for CSV exists, RFC 4180 1) describes a common
+format and establishes "text/csv" as the MIME type registered with the IANA.
+
+Many informal documents exist that describe the CSV format. How To: The Comma
+Separated Value (CSV) File Format 2) provides an overview of the CSV format in
+the most widely used applications and explains how it can best be used and
+supported.
+
+ 1) http://tools.ietf.org/html/rfc4180
+ 2) http://www.creativyst.com/Doc/Articles/CSV/CSV01.htm
+
+The basic rules are as follows:
+
+B<CSV> is a delimited data format that has fields/columns separated by the comma
+character and records/rows separated by newlines. Fields that contain a special
+character (comma, newline, or double quote), must be enclosed in double quotes.
+However, if a line contains a single entry which is the empty string, it may be
+enclosed in double quotes. If a field's value contains a double quote character
+it is escaped by placing another double quote character next to it. The CSV file
+format does not require a specific character encoding, byte order, or line
+terminator format.
+
+=over 2
+
+=item *
+
+Each record is one line terminated by a line feed (ASCII/LF=0x0A) or a
+carriage return and line feed pair (ASCII/CRLF=0x0D 0x0A), however,
+line-breaks can be embedded.
+
+=item *
+
+Fields are separated by commas.
+
+=item *
+
+Allowable characters within a CSV field include 0x09 (tab) and the inclusive
+range of 0x20 (space) through 0x7E (tilde). In binary mode all characters
+are accepted, at least in quoted fields.
+
+=item *
+
+A field within CSV must be surrounded by double-quotes to contain a
+the separator character (comma).
+
+=back
+
+Though this is the most clear and restrictive definition, Text::CSV_XS is way
+more liberal than this, and allows extension:
+
+=over 2
+
+=item *
+
+Line termination by a single carriage return is accepted by default
+
+=item *
+
+The seperation-, escape-, and escape- characters can be any ASCII character
+in the range from 0x20 (space) to 0x7E (tilde). Characters outside this range
+may or may not work as expected. Multibyte characters, like U+060c (ARABIC
+COMMA), U+FF0C (FULLWIDTH COMMA), U+241B (SYMBOL FOR ESCAPE), U+2424 (SYMBOL
+FOR NEWLINE), U+FF02 (FULLWIDTH QUOTATION MARK), and U+201C (LEFT DOUBLE
+QUOTATION MARK) (to give some examples of what might look promising) are
+therefor not allowed.
+
+=item *
+
+A field within CSV must be surrounded by double-quotes to contain an embedded
+double-quote, represented by a pair of consecutive double-quotes. In binary
+mode you may additionally use the sequence C<"0> for representation of a
+NULL byte.
+
+=item *
+
+Several violations of the above specification may be allowed by passing
+options to the object creator.
+
+=back
+
 =head1 FUNCTIONS
 
 =over 4
@@ -405,16 +538,18 @@ Currently the following attributes are available:
 
 An end-of-line string to add to rows, usually C<undef> (nothing,
 default), C<"\012"> (Line Feed) or C<"\015\012"> (Carriage Return,
-Line Feed)
+Line Feed). Cannot be longer than 7 (ASCII) characters.
 
 If both C<$/> and C<eol> equal C<"\015">, parsing lines that end on
 only a Carriage Return without Line Feed, will be C<parse>d correct.
-Line endings, wheather in C<$/> or C<eol>, other than C<undef>,
+Line endings, whether in C<$/> or C<eol>, other than C<undef>,
 C<"\n">, C<"\r\n">, or C<"\r"> are not (yet) supported for parsing.
 
 =item sep_char
 
-The char used for separating fields, by default a comma. (C<,>)
+The char used for separating fields, by default a comma. (C<,>).
+Limited to a single-byte character, usually in the range from 0x20
+(space) to 0x7e (tilde).
 
 The separation character can not be equal to the quote character.
 The separation character can not be equal to the escape character.
@@ -445,6 +580,8 @@ even if the original line was perfectly sane CSV.
 The char used for quoting fields containing blanks, by default the
 double quote character (C<">). A value of undef suppresses
 quote chars. (For simple cases only).
+Limited to a single-byte character, usually in the range from 0x20
+(space) to 0x7e (tilde).
 
 The quote character can not be equal to the separation character.
 
@@ -462,6 +599,8 @@ their applications spit out lines styled like this.
 =item escape_char
 
 The character used for escaping certain characters inside quoted fields.
+Limited to a single-byte character, usually in the range from 0x20
+(space) to 0x7e (tilde).
 
 The C<escape_char> defaults to being the literal double-quote mark (C<">)
 in other words, the same as the default C<quote_char>. This means that
@@ -478,10 +617,10 @@ The escape character can not be equal to the separation character.
 
 =item allow_loose_escapes
 
-By default, parsing fields that have C<escapee_char> characters that
+By default, parsing fields that have C<escape_char> characters that
 escape characters that do not need to be escaped, like:
 
- my $csv = Text::CSV_XS->new ({ esc_char => "\\" });
+ my $csv = Text::CSV_XS->new ({ escape_char => "\\" });
  $csv->parse (qq{1,"my bar\'s",baz,42});
 
 would result in a parse error. Though it is still bad practice to
@@ -612,6 +751,15 @@ by the function or undef for failure.
 
 The I<$csv-E<gt>string ()>, I<$csv-E<gt>fields ()> and I<$csv-E<gt>status ()>
 methods are meaningless, again.
+
+=item eof
+
+ $eof = $csv->eof ();
+
+If C<parse ()> or C<getline ()> was used with an IO stream, this
+mothod will return true (1) if the last call hit end of file, otherwise
+it will return false (''). This is useful to see the difference between
+a failure and end of file.
 
 =item types
 
@@ -782,45 +930,19 @@ An example for parsing CSV lines:
       print "parse () failed on argument: ", $err, "\n";
       }
 
-=head1 CAVEATS
-
-This module is based upon a working definition of CSV format which may not be
-the most general.
-
-=over 4
-
-=item 1
-
-Allowable characters within a CSV field include 0x09 (tab) and the inclusive
-range of 0x20 (space) through 0x7E (tilde). In binary mode all characters
-are accepted, at least in quoted fields:
-
-=item 2
-
-A field within CSV may be surrounded by double-quotes. (The quote char)
-
-=item 3
-
-A field within CSV must be surrounded by double-quotes to contain a comma.
-(The separator char)
-
-=item 4
-
-A field within CSV must be surrounded by double-quotes to contain an embedded
-double-quote, represented by a pair of consecutive double-quotes. In binary
-mode you may additionally use the sequence C<"0> for representation of a
-NULL byte.
-
-=item 5
-
-A CSV string may be terminated by 0x0A (line feed) or by 0x0D,0x0A
-(carriage return, line feed).
-
-=back
-
 =head1 TODO
 
 =over 2
+
+=item Errors & Warnings
+
+At current, it is hard to tell where or why an error occured (if
+at all). New extensions ought to be clear and concise in reporting
+what error occurred where and why, and possibly also tell a remedy
+to the problem.
+
+Basic calls should croak or warn on illegal parameters. Errors
+should be documented.
 
 =item eol
 
@@ -832,7 +954,7 @@ is already enough, and new options only make things less opaque.
 
 =item setting meta info
 
-Future extensions might include extending the C<fields_flags ()>,
+Future extensions might include extending the C<meta_info ()>,
 C<is_quoted ()>, and C<is_binary ()> to accept setting these flags
 for fields, so you can specify which fields are quoted in the
 combine ()/string () combination.
@@ -855,10 +977,10 @@ of the current ("", "", "1", "2", "", "").
 
 =item combined methods
 
-Adding means (methods) that combine C<combine ()> and C<string ()> in
-a single call. Likewise for C<parse ()> and C<fields ()>. Given the
-trouble with embedded newlines, maybe just allowing C<getline ()> and
-C<print ()> is sufficient.
+Requests for adding means (methods) that combine C<combine ()> and
+C<string ()> in a single call will B<not> be honored. Likewise for
+C<parse ()> and C<fields ()>. Given the trouble with embedded newlines,
+using C<getline ()> and C<print ()> instead is the prefered way to go.
 
 =item Unicode
 
@@ -866,11 +988,9 @@ Make C<parse ()> and C<combine ()> do the right thing for Unicode
 (UTF-8) if requested. See t/50_utf8.t. More complicated, but evenly
 important, also for C<getline ()> and C<print ()>.
 
-=item Space delimited seperators
-
-Discuss if and how C<Text::CSV_XS> should/could support formats like
-
-   1 , "foo" , "bar" , 3.19 ,
+Probably the best way to do this is to make a subclass
+Text::CSV_XS::Encoded that can be passed the required encoding and
+then behaves transparently (but slower).
 
 =item Double double quotes
 
@@ -907,12 +1027,6 @@ Returning something like
 
 =over 2
 
-=item 0.29
-
- - allow_loose_quotes
- - allow_loose_escapes
- - allow_whitespace
-
 =item 0.30
 
  - croak / carp
@@ -922,7 +1036,7 @@ Returning something like
 =item 0.31
 
  - allow_double_quoted
- - utf8
+ - Text::CSV_XS::Encoded
 
 =item 0.32
 
