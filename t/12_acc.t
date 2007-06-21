@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 29;
+use Test::More tests => 39;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -23,6 +23,7 @@ is ($csv->keep_meta_info,		0,		"keep_meta_info");
 is ($csv->allow_loose_quotes,		0,		"allow_loose_quotes");
 is ($csv->allow_loose_escapes,		0,		"allow_loose_escapes");
 is ($csv->allow_whitespace,		0,		"allow_whitespace");
+is ($csv->verbatim,			0,		"verbatim");
 
 is ($csv->binary (1),			1,		"binary (1)");
 my @fld = ( 'txt =, "Hi!"', "Yes", "", 2, undef, "1.09", "\r", undef );
@@ -38,10 +39,29 @@ is ($csv->always_quote (1),		1,		"always_quote (1)");
 is ($csv->allow_loose_quotes (1),	1,		"allow_loose_quotes (1)");
 is ($csv->allow_loose_escapes (1),	1,		"allow_loose_escapes (1)");
 is ($csv->allow_whitespace (1),		1,		"allow_whitespace (1)");
+is ($csv->verbatim (1),			1,		"verbatim (1)");
 is ($csv->escape_char ("\\"),		"\\",		"escape_char (\\)");
 ok ($csv->combine (@fld),				"combine");
 is ($csv->string,
     qq{=txt \\=, "Hi!"=;=Yes=;==;=2=;;=1.09=;=\r=;\r},	"string");
+
+# Funny settings, all three translate to \0 internally
+$csv = Text::CSV_XS->new ({
+    sep_char	=> undef,
+    quote_char	=> undef,
+    escape_char	=> undef,
+    });
+is ($csv->sep_char,		undef,		"sep_char undef");
+is ($csv->quote_char,		undef,		"quote_char undef");
+is ($csv->escape_char,		undef,		"escape_char undef");
+ok ($csv->parse ("foo"),			"parse (foo)");
+$csv->sep_char (",");
+ok ($csv->parse ("foo"),			"parse (foo)");
+ok (!$csv->parse ("foo,foo\0bar"),		"parse (foo)");
+$csv->escape_char ("\\");
+ok (!$csv->parse ("foo,foo\0bar"),		"parse (foo)");
+$csv->binary (1);
+ok (!$csv->parse ("foo,foo\0bar"),		"parse (foo)");
 
 # And test erroneous calls
 

@@ -1,10 +1,24 @@
+2007-06-21  0.30 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* ,\rx, is definitely an error without binary (used to HANG!)
+	* Fixed bug in attribute caching for undefined eol
+	* Cleaned up some code after -W*** warnings
+	* Added verbatim.
+	* More test to cover the really dark corners and edge cases
+	* Even more typo fixes in the docs
+	* Added error_diag ()
+	* Added t/80_diag.t - Will not be mirrored by Text::CSV_PP
+	* Added DIAGNOSTICS section to pod - Will grow
+	* Small pod niot (abeltje)
+	* Doc fix in TODO (Miller Hall)
+
 2007-06-08  0.29 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* Removed an unused 'use Data::Dumper'
 	* Added $csv->eof () RT 27424
 	* Two typo's in the doc's (Amsterdam.pm)
 	* Modified examples/speed.pl to better show the diffs between versions
-	* Cache attribute settings and regain speed of 0.23! anmd beyond
+	* Cache attribute settings and regain speed of 0.23! and beyond
 	  Relative overall speeds (YMMV, use examples/speed.pl to check),
 	  the 1.0x versions are from Text::CSV_PP.
 
@@ -25,7 +39,7 @@
 	* Added a SPECIFICATION section to the pod
 	* Safe caching of eol, and a warning in the docs
 	* Rewrote t/20_file.t do do actual file IO instead of IO_Scalar fake
-	* Small optimilisation for parse (juerd)
+	* Small optimization for parse (juerd)
 	* Added make target test_speed
 	* Merged the items from CAVEAT to SPECIFICATION
 	* Updated the TODO and Release Plan sections

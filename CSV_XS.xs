@@ -33,6 +33,7 @@
 #define CACHE_ID_eol_len		18
 #define CACHE_ID_eol_is_cr		19
 #define CACHE_ID_has_types		20
+#define CACHE_ID_verbatim		21
 
 #define CSV_FLAGS_QUO	0x0001
 #define CSV_FLAGS_BIN	0x0002
@@ -43,6 +44,8 @@
 #define CH_CR		'\015'
 #define CH_SPACE	'\040'
 #define CH_DEL		'\177'
+
+#define useIO_EOF	0x10
 
 #define unless(expr)	if (!(expr))
 
@@ -69,6 +72,11 @@ typedef struct {
     byte	 allow_loose_escapes;
     byte	 allow_whitespace;
     byte	 allow_double_quoted;
+
+    byte	 verbatim;
+    byte	 reserved1;
+    byte	 reserved2;
+    byte	 reserved3;
 #endif
 
     byte	*cache;
@@ -88,18 +96,60 @@ typedef struct {
     } csv_t;
 
 #define bool_opt(o) \
-    ((svp = hv_fetch (self, o, strlen (o), 0)) && *svp ? SvTRUE (*svp) : 0)
+    (((svp = hv_fetch (self, o, strlen (o), 0)) && *svp) ? SvTRUE (*svp) : 0)
 
-static csv_t csv_default = {
-    '"', '"', ',', 0,
-    0, 0, 0, 0,
-#if ALLOW_ALLOW
-    0, 0, 0, 0,
-#endif
-    NULL, NULL,
-    NULL, 0, NULL, 0,
-    NULL, NULL, 0, 0,
+typedef struct {
+    int   xs_errno;
+    char *xs_errstr;
+    } xs_error_t;
+xs_error_t xs_errors[] =  {
+
+    /* Generic errors */
+    { 1001, "sep_char is equal to quote_char or escape_char"			},
+
+    /* Parse errors */
+    { 2010, "ECR - QUO char inside quotes followed by CR not part of EOL"	},
+    { 2011, "ECR - Characters after end of quoted field"			},
+    { 2012, "EOF - End of data in parsing input stream"				},
+
+    /*  EIQ - Error Inside Quotes */
+    { 2021, "EIQ - NL char inside quotes, binary off"				},
+    { 2022, "EIQ - CR char inside quotes, binary off"				},
+    { 2023, "EIQ - QUO ..."							},
+    { 2024, "EIQ - EOF cannot be escaped, not even inside quotes"		},
+    { 2025, "EIQ - Loose unescaped escape"					},
+    { 2026, "EIQ - Binary character inside quoted field, binary off"		},
+    { 2027, "EIQ - Quoted field not terminated"					},
+
+    /* EIF - Error Inside Field */
+    { 2030, "EIF - NL char inside unquoted verbatim, binary off"		},
+    { 2031, "EIF - CR char is first char of field, not part of EOL"		},
+    { 2032, "EIF - CR char inside unquoted, not part of EOL"			},
+    { 2033, "EIF - QUO, QUO != ESC, binary off"					},
+    { 2034, "EIF - Loose unescaped quote"					},
+    { 2035, "EIF - Escaped EOF in unquoted field"				},
+    { 2036, "EIF - ESC error"							},
+    { 2037, "EIF - Binary character in unquoted field, binary off"		},
+
+    /* Combine errors */
+    { 2110, "ECB - Binary character in Combine, binary off"			},
+
+    {    0, "" },
     };
+
+static void SetDiag (csv_t *csv, int xse)
+{
+    int   i = 0;
+    SV   *err;
+
+    while (xs_errors[i].xs_errno && xs_errors[i].xs_errno != xse) i++;
+    if ((err = newSVpv (xs_errors[i].xs_errstr, 0))) {
+	sv_upgrade (err, SVt_PVIV);
+	SvIV_set (err, xse);
+	SvIOK_on (err);
+	hv_store (csv->self, "_ERROR_DIAG", 11, err, 0);
+	}
+    } /* SetDiag */
 
 static void SetupCsv (csv_t *csv, HV *self)
 {
@@ -125,9 +175,10 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->allow_loose_escapes	= csv->cache[CACHE_ID_allow_loose_escapes];
 	csv->allow_whitespace		= csv->cache[CACHE_ID_allow_whitespace	];
 	csv->allow_double_quoted	= csv->cache[CACHE_ID_allow_double_quoted];
+	csv->verbatim			= csv->cache[CACHE_ID_verbatim		];
 #endif
-	csv->eol_is_cr			= csv->cache[CACHE_ID_eol_is_cr];
-	csv->eol_len			= csv->cache[CACHE_ID_eol_len];
+	csv->eol_is_cr			= csv->cache[CACHE_ID_eol_is_cr		];
+	csv->eol_len			= csv->cache[CACHE_ID_eol_len		];
 	if (csv->eol_len < 8)
 	    csv->eol = (char *)&csv->cache[CACHE_ID_eol];
 	else {
@@ -135,7 +186,6 @@ static void SetupCsv (csv_t *csv, HV *self)
 	    csv->eol = NULL;
 	    csv->eol_is_cr = 0;
 	    if ((svp = hv_fetch (self, "eol", 3, 0)) && *svp && SvOK (*svp)) {
-		STRLEN len;
 		csv->eol = SvPV (*svp, len);
 		csv->eol_len = len;
 		csv->eol_is_cr = 0;
@@ -145,7 +195,6 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->types = NULL;
 	if (csv->cache[CACHE_ID_has_types]) {
 	    if ((svp = hv_fetch (self, "_types",   6, 0)) && *svp && SvOK (*svp)) {
-		STRLEN len;
 		csv->types = SvPV (*svp, len);
 		csv->types_len = len;
 		}
@@ -181,7 +230,6 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->eol = NULL;
 	csv->eol_is_cr = 0;
 	if ((svp = hv_fetch (self, "eol",      3, 0)) && *svp && SvOK (*svp)) {
-	    STRLEN len;
 	    csv->eol = SvPV (*svp, len);
 	    csv->eol_len = len;
 	    if (len == 1 && *csv->eol == CH_CR)
@@ -190,7 +238,6 @@ static void SetupCsv (csv_t *csv, HV *self)
 
 	csv->types = NULL;
 	if ((svp = hv_fetch (self, "_types",   6, 0)) && *svp && SvOK (*svp)) {
-	    STRLEN len;
 	    csv->types = SvPV (*svp, len);
 	    csv->types_len = len;
 	    }
@@ -203,6 +250,7 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->allow_loose_escapes	= bool_opt ("allow_loose_escapes");
 	csv->allow_whitespace		= bool_opt ("allow_whitespace");
 	csv->allow_double_quoted	= bool_opt ("allow_double_quoted");
+	csv->verbatim			= bool_opt ("verbatim");
 #endif
 
 	if ((csv->cache = (byte *)malloc (32))) {
@@ -219,10 +267,11 @@ static void SetupCsv (csv_t *csv, HV *self)
 	    csv->cache[CACHE_ID_allow_loose_escapes]	= csv->allow_loose_escapes;
 	    csv->cache[CACHE_ID_allow_whitespace]	= csv->allow_whitespace;
 	    csv->cache[CACHE_ID_allow_double_quoted]	= csv->allow_double_quoted;
+	    csv->cache[CACHE_ID_verbatim]		= csv->verbatim;
 #endif
 	    csv->cache[CACHE_ID_eol_is_cr]		= csv->eol_is_cr;
 	    csv->cache[CACHE_ID_eol_len]		= csv->eol_len;
-	    if (csv->eol_len < 8)
+	    if (csv->eol_len > 0 && csv->eol_len < 8 && csv->eol)
 		strcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol);
 	    csv->cache[CACHE_ID_has_types]		= csv->types ? 1 : 0;
 
@@ -275,8 +324,10 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 {
     int		i;
 
-    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char)
+    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char) {
+	SetDiag (csv, 1001);
 	return FALSE;
+	}
 
     for (i = 0; i <= av_len (fields); i++) {
 	SV    **svp;
@@ -320,6 +371,7 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 		    SvREFCNT_inc (*svp);
 		    unless (hv_store (csv->self, "_ERROR_INPUT", 12, *svp, 0))
 			SvREFCNT_dec (*svp);
+		    SetDiag (csv, 2110);
 		    return FALSE;
 		    }
 		if (csv->quote_char  && c == csv->quote_char)
@@ -355,16 +407,13 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 #if MAINT_DEBUG
 static char str_parsed[40];
 #endif
-static void ParseError (csv_t *csv, char *errtype, int ln)
+static void ParseError (csv_t *csv, int xse)
 {
-#if MAINT_DEBUG
-    fprintf (stderr, "# Parse error %s on line %d: '%s'\n",
-	errtype, ln, str_parsed);
-#endif
     if (csv->tmp) {
 	if (hv_store (csv->self, "_ERROR_INPUT", 12, csv->tmp, 0))
 	    SvREFCNT_inc (csv->tmp);
 	}
+    SetDiag (csv, xse);
     } /* ParseError */
 
 static int CsvGet (csv_t *csv, SV *src)
@@ -387,21 +436,37 @@ static int CsvGet (csv_t *csv, SV *src)
     if (csv->tmp && SvOK (csv->tmp)) {
 	csv->bptr = SvPV (csv->tmp, csv->size);
 	csv->used = 0;
-	if (csv->size)
+#if ALLOW_ALLOW
+	if (csv->verbatim && csv->eol_len && csv->size >= csv->eol_len) {
+	    int i, match = 1;
+	    for (i = 1; i <= (int)csv->eol_len; i++) {
+		unless (csv->bptr[csv->size - i] == csv->eol[csv->eol_len - i]) {
+		    match = 0;
+		    break;
+		    }
+		}
+	    if (match) {
+		csv->size -= csv->eol_len;
+		csv->bptr[csv->size] = (char)0;
+		SvCUR_set (csv->tmp, csv->size);
+		}
+	    }
+#endif
+	if (csv->size) 
 	    return ((byte)csv->bptr[csv->used++]);
 	}
-    csv->useIO |= 0x10;
+    csv->useIO |= useIO_EOF;
     return EOF;
     } /* CsvGet */
 
-#define ERROR_INSIDE_QUOTES {			\
+#define ERROR_INSIDE_QUOTES(diag_code) {	\
     SvREFCNT_dec (insideQuotes);		\
-    ParseError (csv, "EIQ", __LINE__);		\
+    ParseError (csv, diag_code);		\
     return FALSE;				\
     }
-#define ERROR_INSIDE_FIELD {			\
+#define ERROR_INSIDE_FIELD(diag_code) {		\
     SvREFCNT_dec (insideField);			\
-    ParseError (csv, "EIF", __LINE__);		\
+    ParseError (csv, diag_code);		\
     return FALSE;				\
     }
 
@@ -466,8 +531,10 @@ static int Parse (csv_t *csv, SV *src, AV *fields, AV *fflags)
     memset (str_parsed, 0, 40);
 #endif
 
-    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char)
+    if (csv->sep_char == csv->quote_char || csv->sep_char == csv->escape_char) {
+	SetDiag (csv, 1001);
 	return FALSE;
+	}
 
     while ((c = CSV_GET) != EOF) {
 	seenSomething = TRUE;
@@ -489,16 +556,16 @@ restart:
 #endif
 		}
 	    else
-	    if (insideQuotes) 
+	    if (insideQuotes)
 		CSV_PUT_SV (insideQuotes, c)
 	    else {
 		AV_PUSH (insideField);
 		insideField = NULL;
 		waitingForField = 1;
 		}
-	    }
+	    } /* SEP char */
 	else
-	if (c == CH_NL) { /* \n */
+	if (c == CH_NL) {
 #if MAINT_DEBUG > 1
 	    fprintf (stderr, "# %d/%d/%d pos %d = NL\n",
 		waitingForField ? 1 : 0, insideQuotes ? 1 : 0,
@@ -516,17 +583,31 @@ restart:
 	    if (insideQuotes) {
 		f |= CSV_FLAGS_BIN;
 		unless (csv->binary)
-		    ERROR_INSIDE_QUOTES;
+		    ERROR_INSIDE_QUOTES (2021);
 
 		CSV_PUT_SV (insideQuotes, c);
 		}
+#if ALLOW_ALLOW
+	    else
+	    if (csv->verbatim) {
+		f |= CSV_FLAGS_BIN;
+		unless (csv->binary)
+		    ERROR_INSIDE_FIELD (2030);
+
+		CSV_PUT_SV (insideField, c);
+		}
+#endif
 	    else {
 		AV_PUSH (insideField);
 		return TRUE;
 		}
-	    }
+	    } /* CH_NL */
 	else
-	if (c == CH_CR) { /* \r */
+	if (c == CH_CR
+#if ALLOW_ALLOW
+	    && !(csv->verbatim)
+#endif
+	    ) {
 #if MAINT_DEBUG > 1
 	    fprintf (stderr, "# %d/%d/%d pos %d = CR\n",
 		waitingForField ? 1 : 0, insideQuotes ? 1 : 0,
@@ -554,16 +635,13 @@ restart:
 		    goto restart;
 		    }
 
-		c = c_ungetc = c2;
-		insideField = newSVpv ("", 0);
-		waitingForField = 0;
-		goto restart;
+		ERROR_INSIDE_FIELD (2031);
 		}
 
 	    if (insideQuotes) {
 		f |= CSV_FLAGS_BIN;
 		unless (csv->binary)
-		    ERROR_INSIDE_QUOTES;
+		    ERROR_INSIDE_QUOTES (2022);
 
 		CSV_PUT_SV (insideQuotes, c);
 		}
@@ -582,9 +660,9 @@ restart:
 		    return TRUE;
 		    }
 
-		ERROR_INSIDE_FIELD;
+		ERROR_INSIDE_FIELD (2032);
 		}
-	    }
+	    } /* CH_CR */
 	else
 	if (c == csv->quote_char) {
 #if MAINT_DEBUG > 1
@@ -632,14 +710,14 @@ restart:
 			if (c3 == CH_NL)
 			    return TRUE;
 
-			ParseError (csv, "ECR", __LINE__);
+			ParseError (csv, 2010);
 			return FALSE;
 			}
 
 		    if (c2 == CH_NL)
 			return TRUE;
 
-		    ParseError (csv, "ECR", __LINE__);
+		    ParseError (csv, 2011);
 		    return FALSE;
 		    }
 
@@ -702,15 +780,16 @@ restart:
 			    }
 			}
 #endif
-		    ERROR_INSIDE_QUOTES;
+		    ERROR_INSIDE_QUOTES (2023);
 		    }
 		}
 	    else
+	    /* ! wiatingForField, !InsideQuotes */
 	    if (csv->quote_char && csv->quote_char != csv->escape_char) {
 		if (is_csv_binary (c)) {
 		    f |= CSV_FLAGS_BIN;
 		    unless (csv->binary)
-			ERROR_INSIDE_FIELD;
+			ERROR_INSIDE_FIELD (2033);
 		    }
 
 		CSV_PUT_SV (insideField, c);
@@ -723,8 +802,8 @@ restart:
 		}
 	    else
 #endif
-		ERROR_INSIDE_FIELD;
-	    }
+		ERROR_INSIDE_FIELD (2034);
+	    } /* QUO char */
 	else
 	if (csv->escape_char && c == csv->escape_char) {
 #if MAINT_DEBUG > 1
@@ -742,7 +821,7 @@ restart:
 		int	c2 = CSV_GET;
 
 		if (c2 == EOF)
-		    ERROR_INSIDE_QUOTES;
+		    ERROR_INSIDE_QUOTES (2024);
 
 		if (c2 == '0')
 		    CSV_PUT_SV (insideQuotes, 0)
@@ -755,25 +834,25 @@ restart:
 		     )
 		    CSV_PUT_SV (insideQuotes, c2)
 		else
-		    ERROR_INSIDE_QUOTES;
+		    ERROR_INSIDE_QUOTES (2025);
 		}
 	    else
 	    if (insideField) {
 		int	c2 = CSV_GET;
 
 		if (c2 == EOF)
-		    ERROR_INSIDE_FIELD;
+		    ERROR_INSIDE_FIELD (2035);
 
 		CSV_PUT_SV (insideField, c2);
 		}
 	    else
-		ERROR_INSIDE_FIELD;
-	    }
+		ERROR_INSIDE_FIELD (2036); /* I think there's no way to get here */
+	    } /* ESC char */
 	else {
 #if MAINT_DEBUG > 1
-	    fprintf (stderr, "# %d/%d/%d pos %d = *** '%c'\n",
+	    fprintf (stderr, "# %d/%d/%d pos %d = === '%c' '%c'\n",
 		waitingForField ? 1 : 0, insideQuotes ? 1 : 0,
-		insideField     ? 1 : 0, spl, c);
+		insideField     ? 1 : 0, spl, c, c_ungetc);
 #endif
 	    if (waitingForField) {
 #if ALLOW_ALLOW
@@ -794,7 +873,7 @@ restart:
 		if (is_csv_binary (c)) {
 		    f |= CSV_FLAGS_BIN;
 		    unless (csv->binary)
-			ERROR_INSIDE_QUOTES;
+			ERROR_INSIDE_QUOTES (2026);
 		    }
 
 		CSV_PUT_SV (insideQuotes, c);
@@ -803,12 +882,18 @@ restart:
 		if (is_csv_binary (c)) {
 		    f |= CSV_FLAGS_BIN;
 		    unless (csv->binary)
-			ERROR_INSIDE_QUOTES;
+			ERROR_INSIDE_FIELD (2037);
 		    }
 
 		CSV_PUT_SV (insideField, c);
 		}
 	    }
+
+	/* continue */
+#if ALLOW_ALLOW
+	if (csv->useIO && csv->verbatim && csv->used == csv->size)
+	    break;
+#endif
 	}
 
     if (waitingForField) {
@@ -820,13 +905,15 @@ restart:
 #endif
 	    }
 	else {
-	    if (csv->useIO)
+	    if (csv->useIO) {
+		SetDiag (csv, 2012);
 		return FALSE;
+		}
 	    }
 	}
     else
     if (insideQuotes) {
-	ERROR_INSIDE_QUOTES
+	ERROR_INSIDE_QUOTES (2027);
 	}
     else
     if (insideField)
@@ -851,16 +938,17 @@ static int xsParse (HV *hv, AV *av, AV *avf, SV *src, bool useIO)
     hv_delete (hv, "_ERROR_INPUT", 12, G_DISCARD);
     result = Parse (&csv, src, av, avf);
 #ifdef ALLOW_ALLOW
-    if (csv.useIO & 0x10)
+    if (csv.useIO & useIO_EOF)
 	hv_store (hv, "_EOF", 4, &PL_sv_yes, 0);
     else
 	hv_store (hv, "_EOF", 4, &PL_sv_no,  0);
 #endif
     if (result && csv.types) {
-	I32	i, len = av_len (av);
+	I32	i;
+	STRLEN	len = av_len (av);
 	SV    **svp;
 
-	for (i = 0; i <= len && i <= csv.types_len; i++) {
+	for (i = 0; i <= (I32)len && i <= (I32)csv.types_len; i++) {
 	    if ((svp = av_fetch (av, i, 0)) && *svp && SvOK (*svp)) {
 		switch (csv.types[i]) {
 		    case CSV_XS_TYPE_IV:
@@ -869,6 +957,9 @@ static int xsParse (HV *hv, AV *av, AV *avf, SV *src, bool useIO)
 
 		    case CSV_XS_TYPE_NV:
 			sv_setnv (*svp, SvIV (*svp));
+			break;
+
+		    default:
 			break;
 		    }
 		}
@@ -891,7 +982,7 @@ static int xsCombine (HV *hv, AV *av, SV *io, bool useIO)
 
 MODULE = Text::CSV_XS		PACKAGE = Text::CSV_XS
 
-PROTOTYPES: ENABLE
+PROTOTYPES: DISABLE
 
 SV*
 Combine (self, dst, fields, useIO)
@@ -900,48 +991,35 @@ Combine (self, dst, fields, useIO)
     SV		*fields
     bool	 useIO
 
-  PROTOTYPE:	$$$$
   PPCODE:
     HV	*hv;
     AV	*av;
 
     CSV_XS_SELF;
-    if (_is_arrayref (fields))
-	av = (AV*)SvRV (fields);
-    else
-	croak ("fields is not an array ref");
-
+    av = (AV*)SvRV (fields);
     ST (0) = xsCombine (hv, av, dst, useIO) ? &PL_sv_yes : &PL_sv_undef;
     XSRETURN (1);
     /* XS Combine */
 
 SV*
-Parse (self, src, fields, fflags, useIO)
+Parse (self, src, fields, fflags)
     SV		*self
     SV		*src
     SV		*fields
     SV		*fflags
-    bool	 useIO
 
-  PROTOTYPE:	$$$$
   PPCODE:
     HV	*hv;
     AV	*av;
     AV	*avf;
 
     CSV_XS_SELF;
-    if (_is_arrayref (fields))
-	av  = (AV*)SvRV (fields);
-    else
-	croak ("fields is not an array ref");
+    av  = (AV*)SvRV (fields);
 #if ALLOW_ALLOW
-    if (_is_arrayref (fflags))
-	avf = (AV*)SvRV (fflags);
-    else
-	croak ("fflags is not an array ref");
+    avf = (AV*)SvRV (fflags);
 #endif
 
-    ST (0) = xsParse (hv, av, avf, src, useIO) ? &PL_sv_yes : &PL_sv_no;
+    ST (0) = xsParse (hv, av, avf, src, 0) ? &PL_sv_yes : &PL_sv_no;
     XSRETURN (1);
     /* XS Parse */
 
@@ -951,11 +1029,9 @@ print (self, io, fields)
     SV		*io
     SV		*fields
 
-  PROTOTYPE:	$$$
   PPCODE:
     HV	 *hv;
     AV	 *av;
-    SV	**svp;
 
     CSV_XS_SELF;
     unless (_is_arrayref (fields))
@@ -972,7 +1048,6 @@ getline (self, io)
     SV		*self
     SV		*io
 
-  PROTOTYPE:	$;$
   PPCODE:
     HV	*hv;
     AV	*av;

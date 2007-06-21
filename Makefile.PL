@@ -25,10 +25,17 @@ my %wm = (
     ABSTRACT     => "Comma-Separated Values manipulation routines",
     AUTHOR       => "H.Merijn Brand <h.merijn\@xs4all.nl>",
     VERSION_FROM => "CSV_XS.pm",
-    PREREQ_PM	 => {
-	"Test::More"	=> 0,
-	"Test::Harness"	=> 0,
-	},
+    PREREQ_PM	 => { "Test::More"	=> 0,
+		      "Test::Harness"	=> 0,
+		      },
+    clean        => { FILES => join " ", qw(
+			 CSV_XS.c.gcov
+			 CSV_XS.gcda
+			 CSV_XS.gcno
+			 CSV_XS.xs.gcov
+			 cover_db
+			 )
+		      },
     );
 $ExtUtils::MakeMaker::VERSION > 6.30 and $wm{LICENSE} = "perl";
 
@@ -43,7 +50,10 @@ sub postamble
     join "\n" =>
 	'cover test_cover:',
 	'	cover -delete',
+	'	make',
 	'	HARNESS_PERL_SWITCHES=-MDevel::Cover $(MAKE) test',
+	'	gcov CSV_XS.c 2>/dev/null',
+	'	find * -name \*.gcov -exec gcov2perl {} \;',
 	'	cover',
 	'',
 	'test_speed: pure_all',

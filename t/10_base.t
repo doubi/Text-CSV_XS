@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 50;
+use Test::More tests => 61;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -62,6 +62,7 @@ is ( $csv->string, qq("abc\tdef",ghi),			"abc + TAB - string ()");
 
 ok (1,							"parse () tests");
 ok (!$csv->parse (),					"Missing arguments");
+ok ( $csv->parse ("\n"),				"Single newline");
 ok (!$csv->parse ('"abc'),				"Missing closing \"");
 ok (!$csv->parse ('ab"c'),				"\" outside of \"'s");
 ok (!$csv->parse ('"ab"c"'),				"Bad character sequence");
@@ -89,5 +90,17 @@ is ( $csv->string, ',2,3.4,a,"a b"',			"Mixed - string ()");
 
 # New from object
 ok ($csv->new (),					"\$csv->new ()");
+
+my $state;
+for ( [ 0, 0 ],
+      [ 0, "foo" ],
+      [ 0, {} ],
+      [ 0, \0 ],
+      [ 0, *STDOUT ],
+      ) {
+    eval { $state = $csv->print (@$_) };
+    ok (!$state, "print needs (IO, ARRAY_REF)");
+    ok ($@ =~ m/^Expected fields to be an array ref/, "Error msg");
+    }
 
 1;

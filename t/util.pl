@@ -1,12 +1,14 @@
 use strict;
 
+my %special = ( 9 => "\\t", 10 => "\\n", 13 => "\\r" );
 sub _readable
 {
+    defined $_[0] or return "--undef--";
     join "", map {
 	my $cp = ord $_;
 	$cp >= 0x20 && $cp <= 0x7e
 	    ? $_
-	    : sprintf "\\x{%02x}", $cp;
+	    : $special{$cp} || sprintf "\\x{%02x}", $cp
 	} split m//, $_[0];
     } # _readable
 

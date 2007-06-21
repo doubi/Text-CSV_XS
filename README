@@ -1,8 +1,9 @@
-Module: Text::CSV
+Module:
+    Text::CSV_XS
 
 Description:
-    Text::CSV provides facilities for the composition and decomposition of
-    comma-separated values.  An instance of the Text::CSV class can combine
+    Text::CSV_XS provides facilities for the composition and decomposition of
+    comma-separated values.  An instance of the Text::CSV_XS class can combine
     fields into a CSV string and parse a CSV string into fields.
 
 Copying:
@@ -31,3 +32,7 @@ Author:
 
     A pure-perl version is being maintained by Makamaka Hannyaharamitu
     as Text::CSV_PP, which tries to follow Text::CSV_XS very closely.
+
+    Expect Text::CSV to be a wrapper module over Text::CSV_XS and
+    Text::CSV_PP that will select Text::CSV_XS if available, and
+    otherwise use Text::PP.

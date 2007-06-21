@@ -4,7 +4,7 @@ use strict;
 $^W = 1;	# use warnings;
 $|  = 1;
 
-use Test::More tests => 61;
+use Test::More tests => 82;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -98,3 +98,44 @@ for (0 .. 5) {
     }
 is ($csv->getline (*FH), undef,				"Fetch field 6");
 is ($csv->eof, 1,					"EOF");
+
+# Edge cases
+$csv = Text::CSV_XS->new ({ escape_char => "+" });
+for ([  1, 1, "\n"		],
+     [  2, 1, "+\n"		],
+     [  3, 1, "+"		],
+     [  4, 0, qq{"+"\n}		],
+     [  5, 0, qq{"+\n}		],
+     [  6, 0, qq{""+\n}		],
+     [  7, 0, qq{"+"}		],
+     [  8, 0, qq{"+}		],
+     [  9, 0, qq{""+}		],
+     [ 10, 0, "\r"		],
+     [ 11, 0, "\r\r"		],
+     [ 12, 0, "+\r\r"		],
+     [ 13, 0, "+\r\r+"		],
+     [ 14, 0, qq{"\r"}		],
+     [ 15, 0, qq{"\r\r"	}	],
+     [ 16, 0, qq{"+\r\r"}	],
+     [ 17, 0, qq{"+\r\r+"}	],
+     [ 14, 0, qq{"\r"\r}	],
+     [ 15, 0, qq{"\r\r"\r}	],
+     [ 16, 0, qq{"+\r\r"\r}	],
+     [ 17, 0, qq{"+\r\r+"\r}	],
+     ) {
+    my ($tst, $valid, $str) = @$_;
+    open  FH, ">_test.csv" or die "_test.csv: $!";
+    print FH $str;
+    close FH;
+    open  FH, "<_test.csv" or die "_test.csv: $!";
+    my $row = $csv->getline (*FH);
+    close FH;
+    if ($valid) {
+	ok ( $row, "$tst - getline ESC");
+	}
+    else {
+	ok (!$row, "$tst - getline ESC");
+	}
+    }
+
+unlink "_test.csv";

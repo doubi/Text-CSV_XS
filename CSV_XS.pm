@@ -28,7 +28,7 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.29";
+$VERSION = "0.30";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -61,6 +61,7 @@ my %def_attr = (
     allow_loose_quotes	=> 0,
     allow_loose_escapes	=> 0,
     allow_whitespace	=> 0,
+    verbatim		=> 0,
     types		=> undef,
 
     _EOF		=> 0,
@@ -104,6 +105,7 @@ my %_cache_id = (	# Keep in sync with XS!
     eol_len		=> 18,
     eol_is_cr		=> 19,
     has_types		=> 20,
+    verbatim		=> 21,
     );
 sub _set_attr
 {
@@ -202,6 +204,13 @@ sub allow_whitespace
     $self->{allow_whitespace};
     } # allow_whitespace
 
+sub verbatim
+{
+    my $self = shift;
+    @_ and $self->_set_attr ("verbatim", shift);
+    $self->{verbatim};
+    } # verbatim
+
 # status
 #
 #   object method returning the success or failure of the most recent
@@ -229,6 +238,24 @@ sub error_input
     my $self = shift;
     return $self->{_ERROR_INPUT};
     } # error_input
+
+# erro_diag
+#
+#   If (and only if) an error occured, this function returns a code that
+#   indicates the reason of failure
+
+sub error_diag
+{
+    my $self = shift;
+    exists $self->{_ERROR_DIAG} or return;
+    my $diag = $self->{_ERROR_DIAG};
+    my $context = wantarray;
+    unless (defined $context) {	# Void context
+	print STDERR "# CSV_XS ERROR: ", 0 + $diag, " - $diag\n";
+	return;
+	}
+    return $context ? (0 + $diag, "$diag") : $diag;
+    } # error_diag
 
 # string
 #
@@ -324,7 +351,7 @@ sub parse
     my $fields = [];
     my $fflags = [];
     $self->{_STRING} = \$str;
-    if (defined $str && $self->Parse ($str, $fields, $fflags, 0)) {
+    if (defined $str && $self->Parse ($str, $fields, $fflags)) {
 	$self->{_ERROR_INPUT} = undef;
 	$self->{_FIELDS} = $fields;
 	$self->{_FFLAGS} = $fflags;
@@ -408,7 +435,7 @@ perhaps better called ASV (anything separated values) rather than just CSV.
 B<Important Note>: The default behavior is to only accept ascii characters.
 This means that fields can not contain newlines. If your data contains 
 newlines embedded in fields, or characters above 0x7e (tilde), or binary data,
-you *must* set C<binary => 1> in the call to C<new ()>.  To cover the widest
+you *must* set C<< binary => 1 >> in the call to C<new ()>.  To cover the widest
 range of parsing options, you will always want to set binary.
 
 But you still have the problem that you have to pass a correct line to the
@@ -496,7 +523,7 @@ Line termination by a single carriage return is accepted by default
 
 =item *
 
-The seperation-, escape-, and escape- characters can be any ASCII character
+The separation-, escape-, and escape- characters can be any ASCII character
 in the range from 0x20 (space) to 0x7E (tilde). Characters outside this range
 may or may not work as expected. Multibyte characters, like U+060c (ARABIC
 COMMA), U+FF0C (FULLWIDTH COMMA), U+241B (SYMBOL FOR ESCAPE), U+2424 (SYMBOL
@@ -657,6 +684,39 @@ true to be able to retrieve that information after parsing with
 the methods C<meta_info ()>, C<is_quoted ()>, and C<is_binary ()>
 described below.  Default is false.
 
+=item verbatim
+
+This is a quite controversial attribute to set, but it makes hard
+things possible.
+
+The basic thought behind this is to tell the parser that the normally
+special characters newline (NL) and Carriage Return (CR) will not be
+special when this flag is set, and be dealt with as being ordinary
+binary characters. This will ease working with data with embedded
+newlines.
+
+When C<verbatim> is used with C<getline ()>, getline
+auto-chomp's every line.
+
+Imagine a file format like
+
+  M^^Hans^Janssen^Klas 2\n2A^Ja^11-06-2007#\r\n
+
+where, the line ending is a very specific "#\r\n", and the sep_char
+is a ^ (caret). None of the fields is quoted, but embedded binary
+data is likely to be present. With the specific line ending, that
+shouldn't be too hard to detect.
+
+By default, Text::CSV_XS' parse function however is instructed to only
+know about "\n" and "\r" to be legal line endings, and so has to deal
+with the embedded newline as a real end-of-line, so it can scan the next
+line if binary is true, and the newline is inside a quoted field.
+With this attribute however, we can tell parse () to parse the line
+as if \n is just nothing more than a binary character.
+
+For parse () this means that the parser has no idea about line ending
+anymore, and getline () chomps line endings on reading.
+
 =back
 
 To sum it up,
@@ -666,13 +726,17 @@ To sum it up,
 is equivalent to
 
  $csv = Text::CSV_XS->new ({
-     quote_char     => '"',
-     escape_char    => '"',
-     sep_char       => ',',
-     eol            => '',
-     always_quote   => 0,
-     binary         => 0,
-     keep_meta_info => 0,
+     quote_char          => '"',
+     escape_char         => '"',
+     sep_char            => ',',
+     eol                 => '',
+     always_quote        => 0,
+     binary              => 0,
+     keep_meta_info      => 0,
+     allow_loose_quotes  => 0,
+     allow_loose_escapes => 0,
+     allow_whitespace    => 0,
+     verbatim            => 0,
      });
 
 For all of the above mentioned flags, there is an accessor method
@@ -757,7 +821,7 @@ methods are meaningless, again.
  $eof = $csv->eof ();
 
 If C<parse ()> or C<getline ()> was used with an IO stream, this
-mothod will return true (1) if the last call hit end of file, otherwise
+method will return true (1) if the last call hit end of file, otherwise
 it will return false (''). This is useful to see the difference between
 a failure and end of file.
 
@@ -870,6 +934,26 @@ C<parse ()>, whichever was called more recently.
 This object function returns the erroneous argument (if it exists) of
 C<combine ()> or C<parse ()>, whichever was called more recently.
 
+=item error_diag
+
+ $csv->error_diag ();
+ $error_code  = 0  + $csv->error_diag ();
+ $error_str   = "" . $csv->error_diag ();
+ ($cde, $str) =      $csv->error_diag ();
+
+If (and only if) an error occured, this function returns the diagnostics
+of that error.
+
+If called in void context, it will print the internal error code and the
+associated error message to STDERR.
+
+If called in list context, it will return the error code and the error
+message in that order.
+
+If called in scalar context, it will return the diagnostics in a single
+scalar, a-la $!. It will contain the error code in numeric context, and
+the diagnostics message in string context.
+
 =back
 
 =head1 INTERNALS
@@ -927,19 +1011,21 @@ An example for parsing CSV lines:
       }
   else {
       my $err = $csv->error_input;
-      print "parse () failed on argument: ", $err, "\n";
+      print STDERR "parse () failed on argument: ", $err, "\n";
+      $csv->error_diag ();
       }
 
 =head1 TODO
 
 =over 2
 
-=item Errors & Warnings
+=item More Errors & Warnings
 
 At current, it is hard to tell where or why an error occured (if
 at all). New extensions ought to be clear and concise in reporting
 what error occurred where and why, and possibly also tell a remedy
-to the problem.
+to the problem. error_diag is a (very) good start, but there is more
+work to be done here.
 
 Basic calls should croak or warn on illegal parameters. Errors
 should be documented.
@@ -967,7 +1053,7 @@ combine ()/string () combination.
 Adding an option that enables the parser to distinguish between
 empty fields and undefined fields, like
 
-  $csv->quote_always (1);
+  $csv->always_quote (1);
   $csv->allow_undef (1);
   $csv->parse (qq{,"",1,"2",,""});
   my @fld = $csv->fields ();
@@ -1021,32 +1107,98 @@ Returning something like
        },
      ]
 
+=item EBCDIC
+
+The hard-coding of characters and character ranges makes this module
+unusable on EBCDIC system. Using some #ifdef structure could enable
+these again without loosing speed. Testing would be the hard part.
+
 =back
 
 =head1 Release plan
 
+No guarantees, but this is what I have in mind right now:
+
 =over 2
-
-=item 0.30
-
- - croak / carp
- - error cause
- - return undef
 
 =item 0.31
 
- - allow_double_quoted
- - Text::CSV_XS::Encoded
+ - croak / carp
+ - error cause, check if error_diag () is enough
+ - return undef
+ - DIAGNOSTICS setction in pod to *describe* the errors
 
 =item 0.32
 
+ - allow_double_quoted
+ - Text::CSV_XS::Encoded (maybe)
+
+=item 0.33
+
  - csv2csv - a script to regenerate a CSV file to follow standards
+ - EBCDIC support
+
+=back
+
+=head1 DIAGNOSTICS
+
+Still under construction ...
+
+If an error occured, $csv->error_diag () can be used to get more information
+on the cause of the failure. Note that for speed reasons, the internal value
+is never cleared on success, so using the value returned by error_diag () in
+normal cases - when no error occured - may cause unexpected results.
+
+Currently these errors are available:
+
+=over 2
+
+=item 1001 "sep_char is equal to quote_char or escape_char"
+
+=item 2010 "ECR - QUO char inside quotes followed by CR not part of EOL"
+
+=item 2011 "ECR - Characters after end of quoted field"
+
+=item 2012 "EOF - End of data in parsing input stream"
+
+=item 2021 "EIQ - NL char inside quotes, binary off"
+
+=item 2022 "EIQ - CR char inside quotes, binary off"
+
+=item 2023 "EIQ - QUO ..."
+
+=item 2024 "EIQ - EOF cannot be escaped, not even inside quotes"
+
+=item 2025 "EIQ - Loose unescaped escape"
+
+=item 2026 "EIQ - Binary character inside quoted field, binary off"
+
+=item 2027 "EIQ - Quoted field not terminated"
+
+=item 2030 "EIF - NL char inside unquoted verbatim, binary off"
+
+=item 2031 "EIF - CR char is first char of field, not part of EOL"
+
+=item 2032 "EIF - CR char inside unquoted, not part of EOL"
+
+=item 2033 "EIF - QUO, QUO != ESC, binary off"
+
+=item 2034 "EIF - Loose unescaped quote"
+
+=item 2035 "EIF - Escaped EOF in unquoted field"
+
+=item 2036 "EIF - ESC error"
+
+=item 2037 "EIF - Binary character in unquoted field, binary off"
+
+=item 2110 "ECB - Binary character in Combine, binary off"
 
 =back
 
 =head1 SEE ALSO
 
-L<perl(1)>, L<IO::File(3)>, L<IO::Wrap(3)>, L<Spreadsheet::Read(3)>
+L<perl(1)>, L<IO::File(3)>, L{IO::Handle(3)>, L<IO::Wrap(3)>,
+L<Text::CSV(3)>, L<Text::CSV_PP(3)>.  and L<Spreadsheet::Read(3)>.
 
 =head1 AUTHORS and MAINTAINERS
 

@@ -14,7 +14,7 @@ BEGIN {
 	plan skip_all => "No perlIO available";
 	}
     else {
-	plan tests => 61;
+	plan tests => 82;
 	}
     }
 
@@ -26,7 +26,7 @@ BEGIN {
 use IO::Handle;
 
 my $io;
-my $str;
+my $io_str;
 my $csv = Text::CSV_XS->new ();
 
 ok (!$csv->print ($io, ["abc", "def\007", "ghi"]), "print bad character");
@@ -47,15 +47,15 @@ for ( [  1, 1, 1, '""'				],
       ) {
     my ($tst, $validp, $validg, @arg, $row) = @$_;
 
-    open  $io, ">", \$str or die "_test.csv: $!";
+    open  $io, ">", \$io_str or die "_test.csv: $!";
     is ($csv->print ($io, \@arg), $validp||"", "$tst - print ()");
     close $io;
 
-    open  $io, ">", \$str or die "_test.csv: $!";
+    open  $io, ">", \$io_str or die "_test.csv: $!";
     print $io join ",", @arg;
     close $io;
 
-    open  $io, "<", \$str or die "_test.csv: $!";
+    open  $io, "<", \$io_str or die "_test.csv: $!";
     $row = $csv->getline ($io);
     unless ($validg) {
 	is ($row, undef, "$tst - false getline ()");
@@ -74,7 +74,7 @@ unlink "_test.csv";
 # This test because of a problem with DBD::CSV
 
 ok (1, "Tests for DBD::CSV");
-open  $io, ">", \$str or die "_test.csv: $!";
+open  $io, ">", \$io_str or die "_test.csv: $!";
 $csv->binary (1);
 $csv->eol    ("\r\n");
 ok ($csv->print ($io, [ "id", "name"			]), "Bad character");
@@ -94,14 +94,14 @@ id,name\015
 5\015
 CONTENTS
 
-open  $io, "<", \$str or die "_test.csv: $!";
+open  $io, "<", \$io_str or die "_test.csv: $!";
 my $content = do { local $/; <$io> };
 close $io;
 is ($content, $expected, "Content");
-open  $io, ">", \$str or die "_test.csv: $!";
+open  $io, ">", \$io_str or die "_test.csv: $!";
 print $io $content;
 close $io;
-open  $io, "<", \$str or die "_test.csv: $!";
+open  $io, "<", \$io_str or die "_test.csv: $!";
 
 my $fields;
 print "# Retrieving data\n";
@@ -112,3 +112,42 @@ for (0 .. 5) {
     }
 is ($csv->getline ($io), undef,				"Fetch field 6");
 is ($csv->eof, 1,					"EOF");
+
+# Edge cases
+$csv = Text::CSV_XS->new ({ escape_char => "+" });
+for ([  1, 1, "\n"		],
+     [  2, 1, "+\n"		],
+     [  3, 1, "+"		],
+     [  4, 0, qq{"+"\n}		],
+     [  5, 0, qq{"+\n}		],
+     [  6, 0, qq{""+\n}		],
+     [  7, 0, qq{"+"}		],
+     [  8, 0, qq{"+}		],
+     [  9, 0, qq{""+}		],
+     [ 10, 0, "\r"		],
+     [ 11, 0, "\r\r"		],
+     [ 12, 0, "+\r\r"		],
+     [ 13, 0, "+\r\r+"		],
+     [ 14, 0, qq{"\r"}		],
+     [ 15, 0, qq{"\r\r"	}	],
+     [ 16, 0, qq{"+\r\r"}	],
+     [ 17, 0, qq{"+\r\r+"}	],
+     [ 14, 0, qq{"\r"\r}	],
+     [ 15, 0, qq{"\r\r"\r}	],
+     [ 16, 0, qq{"+\r\r"\r}	],
+     [ 17, 0, qq{"+\r\r+"\r}	],
+     ) {
+    my ($tst, $valid, $str) = @$_;
+    open  my $io, ">", \$io_str or die "_test.csv: $!";
+    print $io $str;
+    close $io;
+    open  $io, "<", \$io_str or die "_test.csv: $!";
+    my $row = $csv->getline ($io);
+    close $io;
+    if ($valid) {
+	ok ( $row, "$tst - getline ESC");
+	}
+    else {
+	ok (!$row, "$tst - getline ESC");
+	}
+    }

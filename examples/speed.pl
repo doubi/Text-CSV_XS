@@ -7,42 +7,46 @@ use IO::Handle;
 use Text::CSV_XS;
 use Benchmark qw(:all);
 
-my $csv = Text::CSV_XS->new ({ eol => "\n" });
+our $csv = Text::CSV_XS->new ({ eol => "\n" });
 
+my $duration = int (shift || 10);
 my $bigfile = "_file.csv";
-my @fields1 = (
+our @fields1 = (
     "Wiedmann", "Jochen",
     "Am Eisteich 9",
     "72555 Metzingen",
     "Germany",
     "+49 7123 14881",
     "joe\@ispsoft,de");
-my @fields10  = (@fields1) x 10;
-my @fields100 = (@fields1) x 100;
+our @fields10  = (@fields1) x 10;
+our @fields100 = (@fields1) x 100;
 
-$csv->combine (@fields1  ); my $str1   = $csv->string;
-$csv->combine (@fields10 ); my $str10  = $csv->string;
-$csv->combine (@fields100); my $str100 = $csv->string;
+$csv->combine (@fields1  ); our $str1   = $csv->string;
+$csv->combine (@fields10 ); our $str10  = $csv->string;
+$csv->combine (@fields100); our $str100 = $csv->string;
 
-timethese (-10, {
+timethese (-$duration, {
 
-    "combine   1"	=> sub { $csv->combine (@fields1  ) },
-    "combine  10"	=> sub { $csv->combine (@fields10 ) },
-    "combine 100"	=> sub { $csv->combine (@fields100) },
+    "combine   1"	=> q{ $csv->combine (@fields1  ) },
+    "combine  10"	=> q{ $csv->combine (@fields10 ) },
+    "combine 100"	=> q{ $csv->combine (@fields100) },
 
-    "parse     1"	=> sub { $csv->parse   ($str1     ) },
-    "parse    10"	=> sub { $csv->parse   ($str10    ) },
-    "parse   100"	=> sub { $csv->parse   ($str100   ) },
+    "parse     1"	=> q{ $csv->parse   ($str1     ) },
+    "parse    10"	=> q{ $csv->parse   ($str10    ) },
+    "parse   100"	=> q{ $csv->parse   ($str100   ) },
 
     });
 
-open my $io, ">", $bigfile;
+sub max { $_[0] >= $_[1] ? $_[0] : $_[1] }
+my $line_count = max (1_000_000, 50_000 * $duration);
+
+open our $io, ">", $bigfile;
 $csv->print ($io, \@fields10) or die "Cannot print ()\n";
-timethese (500_000, { "print    io" => sub { $csv->print ($io, \@fields10) }});
+timethese ($line_count, { "print    io" => q{ $csv->print ($io, \@fields10) }});
 close   $io;
 -s $bigfile or die "File is empty!\n";
 open    $io, "<", $bigfile;
-timethese (500_000, { "getline  io" => sub { my $ref = $csv->getline ($io) }});
+timethese ($line_count, { "getline  io" => q{ my $ref = $csv->getline ($io) }});
 close   $io;
 print "File was ", -s $bigfile, " bytes long, line length ", length ($str10), "\n";
 unlink $bigfile;

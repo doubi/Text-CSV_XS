@@ -11,7 +11,7 @@ BEGIN {
 	plan skip_all => "No lexical file handles in in this ancient perl version";
 	}
     else {
-	plan tests => 61;
+	plan tests => 82;
 	}
     }
 
@@ -108,3 +108,42 @@ for (0 .. 5) {
     }
 is ($csv->getline ($io), undef,				"Fetch field 6");
 is ($csv->eof, 1,					"EOF");
+
+# Edge cases
+$csv = Text::CSV_XS->new ({ escape_char => "+" });
+for ([  1, 1, "\n"		],
+     [  2, 1, "+\n"		],
+     [  3, 1, "+"		],
+     [  4, 0, qq{"+"\n}		],
+     [  5, 0, qq{"+\n}		],
+     [  6, 0, qq{""+\n}		],
+     [  7, 0, qq{"+"}		],
+     [  8, 0, qq{"+}		],
+     [  9, 0, qq{""+}		],
+     [ 10, 0, "\r"		],
+     [ 11, 0, "\r\r"		],
+     [ 12, 0, "+\r\r"		],
+     [ 13, 0, "+\r\r+"		],
+     [ 14, 0, qq{"\r"}		],
+     [ 15, 0, qq{"\r\r"	}	],
+     [ 16, 0, qq{"+\r\r"}	],
+     [ 17, 0, qq{"+\r\r+"}	],
+     [ 14, 0, qq{"\r"\r}	],
+     [ 15, 0, qq{"\r\r"\r}	],
+     [ 16, 0, qq{"+\r\r"\r}	],
+     [ 17, 0, qq{"+\r\r+"\r}	],
+     ) {
+    my ($tst, $valid, $str) = @$_;
+    open  my $io, ">_test.csv" or die "_test.csv: $!";
+    print $io $str;
+    close $io;
+    open  $io, "<_test.csv" or die "_test.csv: $!";
+    my $row = $csv->getline ($io);
+    close $io;
+    if ($valid) {
+	ok ( $row, "$tst - getline ESC");
+	}
+    else {
+	ok (!$row, "$tst - getline ESC");
+	}
+    }

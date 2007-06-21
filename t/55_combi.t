@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;
 
-use Test::More tests => 7716;
+use Test::More tests => 9074;
 
 BEGIN {
     require_ok "Text::CSV_XS";
@@ -16,7 +16,7 @@ my $csv = Text::CSV_XS->new ({ binary => 1 });
 my @attrib  = qw( quote_char escape_char sep_char );
 my @special = ('"', "'", ",", ";", "\t", "\\", "~");
 # Add undef, once we can return undef
-my @input   = ( "", 1, "1", 1.4, "1.4", " - 1,4", "' ain't it great '",
+my @input   = ( "", 1, "1", 1.4, "1.4", " - 1,4", "1+2=3", "' ain't it great '",
     '"foo"! said the `bär', q{the ~ in "0 \0 this l'ne is \r ; or "'"} );
 my $ninput  = scalar @input;
 my $string  = join "=", "", @input, "";
@@ -39,6 +39,8 @@ sub combi
     if ($attr{sep_char} eq $attr{quote_char} ||
 	$attr{sep_char} eq $attr{escape_char}) {
 	is ($ret, undef, "Illegal combo for combine");
+
+	ok (!$csv->parse ("foo"), "illegal combo for parse");
 	return;
 	}
 
@@ -71,7 +73,7 @@ sub combi
 
 foreach my $aq (0, 1) {
 foreach my $qc (@special) {
-foreach my $ec (@special) {
+foreach my $ec (@special, "+") {
 foreach my $sc (@special, "\0") {
     combi (
 	quote_char	=> $qc,
