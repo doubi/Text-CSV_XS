@@ -1,3 +1,11 @@
+2007-07-23  0.31 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* Removed prototypes in examples/csv2xls
+	* Improved usage for examples/csv2xls (GetOpt::Long now does --help/-?)
+	* Extended examples/csv2xls to deal with Unicode (-u)
+	* Serious bug in Text::CSV_XS::NV () type setting, causing the
+	  resulting field to be truncated to IV
+
 2007-06-21  0.30 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* ,\rx, is definitely an error without binary (used to HANG!)

@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;
 
-use Test::More tests => 21;
+use Test::More tests => 25;
 
 BEGIN {
     use_ok "Text::CSV_XS", ();
@@ -38,6 +38,12 @@ my $inp = join "", map { chr $_ }
 # should be "\001\000\002"
 is ($csv->{_types}, $inp,			"IV PV NV");
 
+ok ($csv->parse ("2.55,CSFDATVM01,3.77"),	"parse ()");
+my @fields = $csv->fields ();
+is ($fields[0], "2",				"Field 1");
+is ($fields[1], "CSFDATVM01",			"Field 2");
+is ($fields[2], "3.77",				"Field 3");
+
 ok ($csv->combine ("", "", "1.00"),		"combine ()");
 is ($csv->string, ',,1.00',			"string");
 
@@ -47,7 +53,7 @@ $SIG{__WARN__} = sub { $warning = shift };
 ok ($csv->parse ($csv->string ()),		"parse (combine ())");
 like ($warning, qr/numeric/,			"numeric warning");
 
-my @fields = $csv->fields ();
+@fields = $csv->fields ();
 is ($fields[0], "0",				"Field 1");
 is ($fields[1], "",				"Field 2");
 is ($fields[2], "1",				"Field 3");

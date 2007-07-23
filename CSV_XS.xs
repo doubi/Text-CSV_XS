@@ -956,7 +956,7 @@ static int xsParse (HV *hv, AV *av, AV *avf, SV *src, bool useIO)
 			break;
 
 		    case CSV_XS_TYPE_NV:
-			sv_setnv (*svp, SvIV (*svp));
+			sv_setnv (*svp, SvNV (*svp));
 			break;
 
 		    default:
