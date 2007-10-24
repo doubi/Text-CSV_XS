@@ -28,7 +28,7 @@ use strict;
 use DynaLoader ();
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.31";
+$VERSION = "0.32";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -77,13 +77,13 @@ sub new
     my $proto = shift;
     my $attr  = shift || {};
     my $class = ref ($proto) || $proto	or return;
-    for (keys %$attr) {
+    for (keys %{$attr}) {
 	m/^[a-z]/ && exists $def_attr{$_} and next;
 #	croak?
 #	print STDERR "### Cannot set attribute '$_'\n";
 	return;
 	}
-    my $self  = {%def_attr, %$attr};
+    my $self  = {%def_attr, %{$attr}};
     bless $self, $class;
     defined $self->{types} and $self->types ($self->{types});
     $self;
@@ -372,7 +372,7 @@ sub types
     my $self = shift;
     if (@_) {
 	if (my $types = shift) {
-	    $self->{_types} = join "", map { chr $_ } @$types;
+	    $self->{_types} = join "", map { chr $_ } @{$types};
 	    $self->{types}  = $types;
 	    }
 	else {
@@ -409,6 +409,7 @@ Text::CSV_XS - comma-separated values manipulation routines
 
  $status       = $csv->status ();      # get the most recent status
  $bad_argument = $csv->error_input (); # get the most recent bad argument
+ $diag         = $csv->error_diag ();  # if an error occured, explains WHY
 
  $status = $csv->print ($io, $colref); # Write an array of fields
                                        # immediately to a file $io
@@ -1030,6 +1031,11 @@ work to be done here.
 Basic calls should croak or warn on illegal parameters. Errors
 should be documented.
 
+If ->new () fails, there should be a way to obtain the reason why.
+Currently it is almost impossible to make new () fail, but in the
+future there should be a (default) option to have it fail when
+unsupported options are passed.
+
 =item eol
 
 Discuss an option to make the eol honor the $/ setting. Maybe
@@ -1121,19 +1127,19 @@ No guarantees, but this is what I have in mind right now:
 
 =over 2
 
-=item 0.31
+=item 0.33
 
  - croak / carp
- - error cause, check if error_diag () is enough
+ - error cause for failing new ()
  - return undef
- - DIAGNOSTICS setction in pod to *describe* the errors
+ - DIAGNOSTICS setction in pod to *describe* the errors (see below)
 
-=item 0.32
+=item 0.34
 
  - allow_double_quoted
  - Text::CSV_XS::Encoded (maybe)
 
-=item 0.33
+=item 0.35
 
  - csv2csv - a script to regenerate a CSV file to follow standards
  - EBCDIC support

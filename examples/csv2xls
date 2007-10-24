@@ -1,12 +1,12 @@
 #!/usr/bin/perl
 
 # csv2xls: Convert csv to xls
-#	   (m)'07 [03 Jul 2007]
+#	   (m)'07 [21 Sep 2007]
 
 use strict;
 use warnings;
 
-our $VERSION = "1.2";
+our $VERSION = "1.3";
 
 sub usage
 {
@@ -49,7 +49,7 @@ GetOptions (
     ) or usage (1);
 
 my $title = @ARGV && -f $ARGV[0] ? $ARGV[0] : "csv2xls";
-($xls //= $title) =~ s/\.csv$/.xls/;
+($xls ||= $title) =~ s/\.csv$/.xls/;
 
 -s $xls && $frc and unlink $xls;
 if (-s $xls) {

@@ -1,3 +1,11 @@
+2007-10-24  0.32 - H.Merijn Brand   <h.m.brand@xs4all.nl>
+
+	* Added $csv->error_diag () to SYNOPSIS
+	* Added need for diag when new () fails to TODO
+	* Fixed a sneaked-in defined or in examples/csv2xls
+	* Plugged a 32byte memory leak in the cache code (valgrind++)
+	* Some perlcritic level1 changes
+
 2007-07-23  0.31 - H.Merijn Brand   <h.m.brand@xs4all.nl>
 
 	* Removed prototypes in examples/csv2xls

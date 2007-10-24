@@ -19,6 +19,8 @@
 #define CSV_XS_TYPE_NV	2
 
 /* Keep in sync with .pm! */
+#define CACHE_SIZE			32
+
 #define CACHE_ID_quote_char		0
 #define CACHE_ID_escape_char		1
 #define CACHE_ID_sep_char		2
@@ -79,7 +81,7 @@ typedef struct {
     byte	 reserved3;
 #endif
 
-    byte	*cache;
+    byte	 cache[CACHE_SIZE];
 
     HV*		 self;
 
@@ -160,7 +162,7 @@ static void SetupCsv (csv_t *csv, HV *self)
     csv->self  = self;
 
     if ((svp = hv_fetch (self, "_CACHE", 6, 0)) && *svp) {
-	csv->cache = (byte *)SvPV (*svp, len);
+	memcpy (csv->cache, SvPV (*svp, len), CACHE_SIZE);
 
 	csv->quote_char			= csv->cache[CACHE_ID_quote_char	];
 	csv->escape_char		= csv->cache[CACHE_ID_escape_char	];
@@ -253,33 +255,30 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->verbatim			= bool_opt ("verbatim");
 #endif
 
-	if ((csv->cache = (byte *)malloc (32))) {
-	    csv->cache[CACHE_ID_quote_char]		= csv->quote_char;
-	    csv->cache[CACHE_ID_escape_char]		= csv->escape_char;
-	    csv->cache[CACHE_ID_sep_char]		= csv->sep_char;
-	    csv->cache[CACHE_ID_binary]			= csv->binary;
+	csv->cache[CACHE_ID_quote_char]			= csv->quote_char;
+	csv->cache[CACHE_ID_escape_char]		= csv->escape_char;
+	csv->cache[CACHE_ID_sep_char]			= csv->sep_char;
+	csv->cache[CACHE_ID_binary]			= csv->binary;
 
-	    csv->cache[CACHE_ID_keep_meta_info]		= csv->keep_meta_info;
-	    csv->cache[CACHE_ID_alwasy_quote]		= csv->alwasy_quote;
+	csv->cache[CACHE_ID_keep_meta_info]		= csv->keep_meta_info;
+	csv->cache[CACHE_ID_alwasy_quote]		= csv->alwasy_quote;
 
 #if ALLOW_ALLOW
-	    csv->cache[CACHE_ID_allow_loose_quotes]	= csv->allow_loose_quotes;
-	    csv->cache[CACHE_ID_allow_loose_escapes]	= csv->allow_loose_escapes;
-	    csv->cache[CACHE_ID_allow_whitespace]	= csv->allow_whitespace;
-	    csv->cache[CACHE_ID_allow_double_quoted]	= csv->allow_double_quoted;
-	    csv->cache[CACHE_ID_verbatim]		= csv->verbatim;
+	csv->cache[CACHE_ID_allow_loose_quotes]		= csv->allow_loose_quotes;
+	csv->cache[CACHE_ID_allow_loose_escapes]	= csv->allow_loose_escapes;
+	csv->cache[CACHE_ID_allow_whitespace]		= csv->allow_whitespace;
+	csv->cache[CACHE_ID_allow_double_quoted]	= csv->allow_double_quoted;
+	csv->cache[CACHE_ID_verbatim]			= csv->verbatim;
 #endif
-	    csv->cache[CACHE_ID_eol_is_cr]		= csv->eol_is_cr;
-	    csv->cache[CACHE_ID_eol_len]		= csv->eol_len;
-	    if (csv->eol_len > 0 && csv->eol_len < 8 && csv->eol)
-		strcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol);
-	    csv->cache[CACHE_ID_has_types]		= csv->types ? 1 : 0;
+	csv->cache[CACHE_ID_eol_is_cr]			= csv->eol_is_cr;
+	csv->cache[CACHE_ID_eol_len]			= csv->eol_len;
+	if (csv->eol_len > 0 && csv->eol_len < 8 && csv->eol)
+	    strcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol);
+	csv->cache[CACHE_ID_has_types]			= csv->types ? 1 : 0;
 
-	    if ((csv->tmp = newSVpv ((char *)csv->cache, 32)))
-		hv_store (self, "_CACHE", 6, csv->tmp, 0);
-	    }
+	if ((csv->tmp = newSVpvn ((char *)csv->cache, CACHE_SIZE)))
+	    hv_store (self, "_CACHE", 6, csv->tmp, 0);
 	}
-
 
     csv->used = 0;
     } /* SetupCsv */
