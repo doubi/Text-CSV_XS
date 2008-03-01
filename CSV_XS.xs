@@ -29,13 +29,14 @@
 #define CACHE_ID_alwasy_quote		5
 #define CACHE_ID_allow_loose_quotes	6
 #define CACHE_ID_allow_loose_escapes	7
-#define CACHE_ID_allow_whitespace	8
-#define CACHE_ID_allow_double_quoted	9
-#define CACHE_ID_eol			10
-#define CACHE_ID_eol_len		18
-#define CACHE_ID_eol_is_cr		19
-#define CACHE_ID_has_types		20
-#define CACHE_ID_verbatim		21
+#define CACHE_ID_allow_double_quoted	8
+#define CACHE_ID_allow_whitespace	9
+#define CACHE_ID_blank_is_undef		10
+#define CACHE_ID_eol			11
+#define CACHE_ID_eol_len		19
+#define CACHE_ID_eol_is_cr		20
+#define CACHE_ID_has_types		21
+#define CACHE_ID_verbatim		22
 
 #define CSV_FLAGS_QUO	0x0001
 #define CSV_FLAGS_BIN	0x0002
@@ -72,13 +73,13 @@ typedef struct {
 #if ALLOW_ALLOW
     byte	 allow_loose_quotes;
     byte	 allow_loose_escapes;
-    byte	 allow_whitespace;
     byte	 allow_double_quoted;
+    byte	 allow_whitespace;
 
+    byte	 blank_is_undef;
     byte	 verbatim;
     byte	 reserved1;
     byte	 reserved2;
-    byte	 reserved3;
 #endif
 
     byte	 cache[CACHE_SIZE];
@@ -107,7 +108,7 @@ typedef struct {
 xs_error_t xs_errors[] =  {
 
     /* Generic errors */
-    { 1001, "sep_char is equal to quote_char or escape_char"			},
+    { 1001, "INI - sep_char is equal to quote_char or escape_char"			},
 
     /* Parse errors */
     { 2010, "ECR - QUO char inside quotes followed by CR not part of EOL"	},
@@ -127,7 +128,6 @@ xs_error_t xs_errors[] =  {
     { 2030, "EIF - NL char inside unquoted verbatim, binary off"		},
     { 2031, "EIF - CR char is first char of field, not part of EOL"		},
     { 2032, "EIF - CR char inside unquoted, not part of EOL"			},
-    { 2033, "EIF - QUO, QUO != ESC, binary off"					},
     { 2034, "EIF - Loose unescaped quote"					},
     { 2035, "EIF - Escaped EOF in unquoted field"				},
     { 2036, "EIF - ESC error"							},
@@ -175,8 +175,9 @@ static void SetupCsv (csv_t *csv, HV *self)
 #if ALLOW_ALLOW
 	csv->allow_loose_quotes		= csv->cache[CACHE_ID_allow_loose_quotes];
 	csv->allow_loose_escapes	= csv->cache[CACHE_ID_allow_loose_escapes];
-	csv->allow_whitespace		= csv->cache[CACHE_ID_allow_whitespace	];
 	csv->allow_double_quoted	= csv->cache[CACHE_ID_allow_double_quoted];
+	csv->allow_whitespace		= csv->cache[CACHE_ID_allow_whitespace	];
+	csv->blank_is_undef		= csv->cache[CACHE_ID_blank_is_undef	];
 	csv->verbatim			= csv->cache[CACHE_ID_verbatim		];
 #endif
 	csv->eol_is_cr			= csv->cache[CACHE_ID_eol_is_cr		];
@@ -250,8 +251,9 @@ static void SetupCsv (csv_t *csv, HV *self)
 #if ALLOW_ALLOW
 	csv->allow_loose_quotes		= bool_opt ("allow_loose_quotes");
 	csv->allow_loose_escapes	= bool_opt ("allow_loose_escapes");
-	csv->allow_whitespace		= bool_opt ("allow_whitespace");
 	csv->allow_double_quoted	= bool_opt ("allow_double_quoted");
+	csv->allow_whitespace		= bool_opt ("allow_whitespace");
+	csv->blank_is_undef		= bool_opt ("blank_is_undef");
 	csv->verbatim			= bool_opt ("verbatim");
 #endif
 
@@ -266,8 +268,9 @@ static void SetupCsv (csv_t *csv, HV *self)
 #if ALLOW_ALLOW
 	csv->cache[CACHE_ID_allow_loose_quotes]		= csv->allow_loose_quotes;
 	csv->cache[CACHE_ID_allow_loose_escapes]	= csv->allow_loose_escapes;
-	csv->cache[CACHE_ID_allow_whitespace]		= csv->allow_whitespace;
 	csv->cache[CACHE_ID_allow_double_quoted]	= csv->allow_double_quoted;
+	csv->cache[CACHE_ID_allow_whitespace]		= csv->allow_whitespace;
+	csv->cache[CACHE_ID_blank_is_undef]		= csv->blank_is_undef;
 	csv->cache[CACHE_ID_verbatim]			= csv->verbatim;
 #endif
 	csv->cache[CACHE_ID_eol_is_cr]			= csv->eol_is_cr;
@@ -486,22 +489,24 @@ static int CsvGet (csv_t *csv, SV *src)
 #if ALLOW_ALLOW
 #define AV_PUSH(sv) {				\
     *SvEND (sv) = (char)0;			\
-    if (csv->allow_whitespace)			\
-	strip_trail_whitespace (sv);		\
-    av_push (fields, sv);			\
-    if (csv->keep_meta_info) {			\
-	av_push (fflags, newSViv (f));		\
-	f = 0;					\
+    if (!(f & CSV_FLAGS_QUO) && SvCUR (sv) == 0 && csv->blank_is_undef)	\
+	av_push (fields, &PL_sv_undef);		\
+    else {					\
+	if (csv->allow_whitespace && ! (f & CSV_FLAGS_QUO))	\
+	    strip_trail_whitespace (sv);	\
+	av_push (fields, sv);			\
 	}					\
+    if (csv->keep_meta_info)			\
+	av_push (fflags, newSViv (f));		\
+    f = 0;					\
     }
 #else
 #define AV_PUSH(sv) {				\
     *SvEND (sv) = (char)0;			\
     av_push (fields, sv);			\
-    if (csv->keep_meta_info) {			\
+    if (csv->keep_meta_info)			\
 	av_push (fflags, newSViv (f));		\
-	f = 0;					\
-	}					\
+    f = 0;					\
     }
 #endif
 
@@ -548,7 +553,12 @@ restart:
 		insideField     ? 1 : 0, spl, c);
 #endif
 	    if (waitingForField) {
-		av_push (fields, newSVpv ("", 0));
+#if ALLOW_ALLOW
+		if (csv->blank_is_undef)
+		    av_push (fields, &PL_sv_undef);
+		else
+#endif
+		    av_push (fields, newSVpv ("", 0));
 #if ALLOW_ALLOW
 		if (csv->keep_meta_info)
 		    av_push (fflags, newSViv (f));
@@ -571,7 +581,12 @@ restart:
 		insideField     ? 1 : 0, spl);
 #endif
 	    if (waitingForField) {
-		av_push (fields, newSVpv ("", 0));
+#if ALLOW_ALLOW
+		if (csv->blank_is_undef)
+		    av_push (fields, &PL_sv_undef);
+		else
+#endif
+		    av_push (fields, newSVpv ("", 0));
 #if ALLOW_ALLOW
 		if (csv->keep_meta_info)
 		    av_push (fflags, newSViv (f));
@@ -663,7 +678,7 @@ restart:
 		}
 	    } /* CH_CR */
 	else
-	if (c == csv->quote_char) {
+	if (csv->quote_char && c == csv->quote_char) {
 #if MAINT_DEBUG > 1
 	    fprintf (stderr, "# %d/%d/%d pos %d = QUO '%c'\n",
 		waitingForField ? 1 : 0, insideQuotes ? 1 : 0,
@@ -783,17 +798,7 @@ restart:
 		    }
 		}
 	    else
-	    /* ! wiatingForField, !InsideQuotes */
-	    if (csv->quote_char && csv->quote_char != csv->escape_char) {
-		if (is_csv_binary (c)) {
-		    f |= CSV_FLAGS_BIN;
-		    unless (csv->binary)
-			ERROR_INSIDE_FIELD (2033);
-		    }
-
-		CSV_PUT_SV (insideField, c);
-		}
-	    else
+	    /* !waitingForField, !InsideQuotes */
 #if ALLOW_ALLOW
 	    if (csv->allow_loose_quotes) { /* 1,foo "boo" d'uh,1 */
 		f |= CSV_FLAGS_EIF;
@@ -897,7 +902,12 @@ restart:
 
     if (waitingForField) {
 	if (seenSomething) {
-	    av_push (fields, newSVpv ("", 0));
+#if ALLOW_ALLOW
+	    if (csv->blank_is_undef)
+		av_push (fields, &PL_sv_undef);
+	    else
+#endif
+		av_push (fields, newSVpv ("", 0));
 #if ALLOW_ALLOW
 	    if (csv->keep_meta_info)
 		av_push (fflags, newSViv (f));
