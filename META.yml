@@ -1,11 +1,11 @@
 --- #YAML:1.0
 name:                Text-CSV_XS
-version:             0.35
+version:             0.36
 abstract:            Comma-Separated Values manipulation routines
 license:             perl
 author:              
     - H.Merijn Brand <h.merijn@xs4all.nl>
-generated_by:        ExtUtils::MakeMaker version 6.42
+generated_by:        ExtUtils::MakeMaker version 6.44
 distribution_type:   module
 requires:     
     Config:                        0
