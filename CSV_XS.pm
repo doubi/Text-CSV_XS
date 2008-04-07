@@ -27,9 +27,10 @@ use strict;
 use warnings;
 
 use DynaLoader ();
+use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.37";
+$VERSION = "0.40";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -66,12 +67,15 @@ my %def_attr = (
     verbatim		=> 0,
     types		=> undef,
 
+
     _EOF		=> 0,
     _STATUS		=> undef,
     _FIELDS		=> undef,
     _FFLAGS		=> undef,
     _STRING		=> undef,
     _ERROR_INPUT	=> undef,
+    _COLUMN_NAMES	=> undef,
+    _BOUND_COLUMNS	=> undef,
     );
 my $last_new_err = "";
 
@@ -113,6 +117,8 @@ my %_cache_id = (	# Keep in sync with XS!
     eol_is_cr		=> 20,
     has_types		=> 21,
     verbatim		=> 22,
+
+    _is_bound		=> 23,
     );
 sub _set_attr
 {
@@ -120,7 +126,7 @@ sub _set_attr
     $self->{$name} = $val;
     $self->{_CACHE} or return;
     my @cache = unpack "C*", $self->{_CACHE};
-    $cache[$_cache_id{$name}] = defined $val ? ord $val : 0;
+    $cache[$_cache_id{$name}] = defined $val ? unpack "C", $val : 0;
     $self->{_CACHE} = pack "C*", @cache;
     } # _set_attr
 
@@ -163,7 +169,7 @@ sub eol
 	    $cache[$_cache_id{eol_is_cr}] = 0;
 	    }
 	$eol .= "\0\0\0\0\0\0\0\0";
-	$cache[$_cache_id{eol} + $_] = ord substr $eol, $_, 1 for 0 .. 7;
+	$cache[$_cache_id{eol} + $_] = unpack "C", substr $eol, $_, 1 for 0 .. 7;
 	$self->{_CACHE} = pack "C*", @cache;
 	}
     $self->{eol};
@@ -380,6 +386,60 @@ sub parse
     $self->{_STATUS};
     } # parse
 
+sub column_names
+{
+    my ($self, @keys) = @_;
+    @keys or
+	return defined $self->{_COLUMN_NAMES} ? @{$self->{_COLUMN_NAMES}} : undef;
+
+    @keys == 1 && ! defined $keys[0] and
+	return $self->{_COLUMN_NAMES} = undef;
+
+    if (@keys == 1 && ref $keys[0] eq "ARRAY") {
+	@keys = @{$keys[0]};
+	}
+    elsif (join "", map { defined $_ ? ref $_ : "UNDEF" } @keys) {
+	croak ($self->SetDiag (3001));
+	}
+
+    $self->{_is_bound} && @keys != unpack "C", $self->{_is_bound} and
+	croak ($self->SetDiag (3003));
+
+    $self->{_COLUMN_NAMES} = [ @keys ];
+    @keys;
+    } # column_names
+
+sub bind_columns
+{
+    my ($self, @refs) = @_;
+    @refs or
+	return defined $self->{_BOUND_COLUMNS} ? @{$self->{_BOUND_COLUMNS}} : undef;
+
+    @refs == 1 && ! defined $refs[0] and
+	return $self->{_BOUND_COLUMNS} = undef;
+
+    $self->{_COLUMN_NAMES} && @refs != @{$self->{_COLUMN_NAMES}} and
+	croak ($self->SetDiag (3003));
+
+    @refs > 255 and croak ($self->SetDiag (3005));
+
+    join "", map { ref $_ eq "SCALAR" ? "" : "*" } @refs and
+	croak ($self->SetDiag (3004));
+
+    $self->_set_attr ("_is_bound", pack "C" => scalar @refs);
+    $self->{_BOUND_COLUMNS} = [ @refs ];
+    @refs;
+    } # column_names
+
+sub getline_hr
+{
+    my ($self, @args, %hr) = @_;
+    $self->{_COLUMN_NAMES} or croak ($self->SetDiag (3002));
+    my $fr = $self->getline (@args) or return undef;
+    @hr{@{$self->{_COLUMN_NAMES}}} = @$fr;
+    \%hr;
+    } # getline_hr
+
 bootstrap Text::CSV_XS $VERSION;
 
 sub types
@@ -431,6 +491,8 @@ Text::CSV_XS - comma-separated values manipulation routines
  $colref = $csv->getline ($io);        # Read a line from file $io,
                                        # parse it and return an array
                                        # ref of fields
+ $csv->column_names (@names);          # Set column names for getline_hr ()
+ $ref = $csv->getline_hr ($io);        # getline (), but returns a hashref
  $eof = $csv->eof ();                  # Indicate if last parse or
                                        # getline () hit End Of File
 
@@ -562,13 +624,11 @@ options to the object creator.
 
 =head1 FUNCTIONS
 
-=over 4
-
-=item version ()
+=head2 version ()
 
 (Class method) Returns the current module version.
 
-=item new (\%attr)
+=head2 new (\%attr)
 
 (Class method) Returns a new instance of Text::CSV_XS. The objects
 attributes are described by the (optional) hash ref C<\%attr>.
@@ -796,7 +856,7 @@ C<error_diag ()> will return a string like
 
  "Unknown attribute 'ecs_char'"
 
-=item combine
+=head2 combine
 
  $status = $csv->combine (@columns);
 
@@ -807,7 +867,7 @@ retrieve the resultant CSV string.  Upon failure, the value returned by
 C<string ()> is undefined and C<error_input ()> can be called to retrieve an
 invalid argument.
 
-=item print
+=head2 print
 
  $status = $csv->print ($io, $colref);
 
@@ -829,14 +889,14 @@ In particular the I<$csv-E<gt>string ()>, I<$csv-E<gt>status ()>,
 I<$csv->fields ()> and I<$csv-E<gt>error_input ()> methods are meaningless
 after executing this method.
 
-=item string
+=head2 string
 
  $line = $csv->string ();
 
 This object function returns the input to C<parse ()> or the resultant CSV
 string of C<combine ()>, whichever was called more recently.
 
-=item parse
+=head2 parse
 
  $status = $csv->parse ($line);
 
@@ -850,7 +910,7 @@ to retrieve the invalid argument.
 You may use the I<types ()> method for setting column types. See the
 description below.
 
-=item getline
+=head2 getline
 
  $colref = $csv->getline ($io);
 
@@ -862,7 +922,43 @@ by the function or undef for failure.
 The I<$csv-E<gt>string ()>, I<$csv-E<gt>fields ()> and I<$csv-E<gt>status ()>
 methods are meaningless, again.
 
-=item eof
+=head2 getline_hr
+
+The C<getline_hr ()> and C<column_names ()> methods work together to allow
+you to have rows returned as hashrefs. You must call C<column_names ()>
+first to declare your column names. 
+
+ $csv->column_names (qw( code name price description ));
+ $hr = $csv->getline_hr ($io);
+ print "Price for $hr->{name} is $hr->{price} EUR\n";
+
+C<getline_hr ()> will croak if called before C<column_names ()>.
+
+=head2 column_names
+
+Set the keys that will be used in the C<getline_hr ()> calls. If no keys
+(column names) are passed, it'll return the current setting.
+
+C<column_names ()> accepts a list of scalars (the column names) or a
+single array_ref, so you can pass C<getline ()>
+
+  $csv->column_names ($csv->getline ($io));
+
+C<column_names ()> croaks on invalid arguments.
+
+=head2 bind_columns
+
+Takes a list of references to scalars (max 255) to store the fields fetched
+C<by getline_hr ()> in. When you don't pass enough references to store the
+fetched fields in, C<getline ()> will fail. If you pass more than there are
+fields to return, the remaining references are left untouched.
+
+  $csv->bind_columns (\$code, \$name, \$price, \$description);
+  while ($csv->getline ()) {
+      print "The price of a $name is \x{20ac} $price\n";
+      }
+
+=head2 eof
 
  $eof = $csv->eof ();
 
@@ -871,7 +967,7 @@ method will return true (1) if the last call hit end of file, otherwise
 it will return false (''). This is useful to see the difference between
 a failure and end of file.
 
-=item types
+=head2 types
 
  $csv->types (\@tref);
 
@@ -911,14 +1007,14 @@ Set field type to string.
 
 =back
 
-=item fields
+=head2 fields
 
  @columns = $csv->fields ();
 
 This object function returns the input to C<combine ()> or the resultant
 decomposed fields of C<parse ()>, whichever was called more recently.
 
-=item meta_info
+=head2 meta_info
 
  @flags = $csv->meta_info ();
 
@@ -944,7 +1040,7 @@ The field was binary.
 
 See the C<is_*** ()> methods below.
 
-=item is_quoted
+=head2 is_quoted
 
   my $quoted = $csv->is_quoted ($column_idx);
 
@@ -956,7 +1052,7 @@ enclosed in C<quote_char> quotes. This might be important for data
 where C<,20070108,> is to be treated as a numeric value, and where
 C<,"20070108",> is explicitly marked as character string data.
 
-=item is_binary
+=head2 is_binary
 
   my $binary = $csv->is_binary ($column_idx);
 
@@ -966,21 +1062,21 @@ last result of C<parse ()>.
 This returns a true value if the data in the indicated column
 contained any byte in the range [\x00-\x08,\x10-\x1F,\x7F-\xFF]
 
-=item status
+=head2 status
 
  $status = $csv->status ();
 
 This object function returns success (or failure) of C<combine ()> or
 C<parse ()>, whichever was called more recently.
 
-=item error_input
+=head2 error_input
 
  $bad_argument = $csv->error_input ();
 
 This object function returns the erroneous argument (if it exists) of
 C<combine ()> or C<parse ()>, whichever was called more recently.
 
-=item error_diag
+=head2 error_diag
 
  $csv->error_diag ();
  $error_code  = 0  + $csv->error_diag ();
@@ -1000,8 +1096,6 @@ If called in scalar context, it will return the diagnostics in a single
 scalar, a-la $!. It will contain the error code in numeric context, and
 the diagnostics message in string context.
 
-=back
-
 =head1 INTERNALS
 
 =over 4
@@ -1009,6 +1103,8 @@ the diagnostics message in string context.
 =item Combine (...)
 
 =item Parse (...)
+
+=item SetDiag (...)
 
 =back
 
@@ -1116,7 +1212,14 @@ important, also for C<getline ()> and C<print ()>.
 
 Probably the best way to do this is to make a subclass
 Text::CSV_XS::Encoded that can be passed the required encoding and
-then behaves transparently (but slower).
+then behaves transparently (but slower), something like this:
+
+    use Text::CSV::Encoded;
+    my $csv = Text::CSV::Encoded->new ({
+        encoding     => "utf-8",      # Both in and out
+        encoding_in  => "iso-8859-1", # Only the input
+        encoding_out => "cp1252",     # Only the output
+        });
 
 =item Double double quotes
 
@@ -1163,6 +1266,7 @@ No guarantees, but this is what I have in mind right now:
 
 =item next
 
+ - This might very well be 1.00
  - DIAGNOSTICS setction in pod to *describe* the errors (see below)
  - croak / carp
 
@@ -1215,7 +1319,11 @@ Parse error inside field.
 
 =item ECB
 
-Combine error
+Combine error.
+
+=item EHR
+
+HashRef parse related error.
 
 =back
 
@@ -1283,6 +1391,22 @@ got it when you get it.
 =item 2037 "EIF - Binary character in unquoted field, binary off"
 
 =item 2110 "ECB - Binary character in Combine, binary off"
+
+=item 3001 "EHR - Unsupported syntax for column_names ()"
+
+=item 3002 "EHR - getline_hr () called before column_names ()"
+
+=item 3003 "EHR - bind_columns () and column_names () fields count mismatch"
+
+=item 3004 "EHR - bind_columns () only accepts refs to scalars"
+
+=item 3005 "EHR - bind_columns () takes 254 refs max"
+
+=item 3006 "EHR - bind_columns () did not pass enough refs for parsed fields"
+
+=item 3007 "EHR - bind_columns needs refs to writeable scalars"
+
+=item 3008 "EHR - unexpected error in bound fields
 
 =back
 
