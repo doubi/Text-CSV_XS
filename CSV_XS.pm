@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.40";
+$VERSION = "0.41";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -267,15 +267,20 @@ sub error_input
 sub error_diag
 {
     my $self = shift;
-    $self && ref $self eq __PACKAGE__ or return $last_new_err;
-    exists $self->{_ERROR_DIAG} or return;
-    my $diag = $self->{_ERROR_DIAG};
+    my @diag = (0, $last_new_err);
+
+    unless ($self && ref $self) {	# Class method or direct call
+	$last_new_err and $diag[0] = 1000;
+	}
+    elsif ($self->isa (__PACKAGE__) && exists $self->{_ERROR_DIAG}) {
+	@diag = (0 + $self->{_ERROR_DIAG}, $self->{_ERROR_DIAG});
+	}
     my $context = wantarray;
     unless (defined $context) {	# Void context
-	print STDERR "# CSV_XS ERROR: ", 0 + $diag, " - $diag\n";
+	$diag[0] and print STDERR "# CSV_XS ERROR: $diag[0] - $diag[1]\n";
 	return;
 	}
-    return $context ? (0 + $diag, "$diag") : $diag;
+    return $context ? @diag : $diag[1];
     } # error_diag
 
 # string
@@ -491,6 +496,7 @@ Text::CSV_XS - comma-separated values manipulation routines
  $colref = $csv->getline ($io);        # Read a line from file $io,
                                        # parse it and return an array
                                        # ref of fields
+ $csv->bind_columns (@refs);           # Set return fields for getline ()
  $csv->column_names (@names);          # Set column names for getline_hr ()
  $ref = $csv->getline_hr ($io);        # getline (), but returns a hashref
  $eof = $csv->eof ();                  # Indicate if last parse or
@@ -790,7 +796,7 @@ special when this flag is set, and be dealt with as being ordinary
 binary characters. This will ease working with data with embedded
 newlines.
 
-When C<verbatim> is used with C<getline ()>, getline
+When C<verbatim> is used with C<getline ()>, C<getline ()>
 auto-chomp's every line.
 
 Imagine a file format like
@@ -919,6 +925,9 @@ combine: It reads a row from the IO object $io using $io->getline ()
 and parses this row into an array ref. This array ref is returned
 by the function or undef for failure.
 
+When fields are bound with C<bind_columns ()>, the return value is a
+reference to an empty list.
+
 The I<$csv-E<gt>string ()>, I<$csv-E<gt>fields ()> and I<$csv-E<gt>status ()>
 methods are meaningless, again.
 
@@ -949,7 +958,7 @@ C<column_names ()> croaks on invalid arguments.
 =head2 bind_columns
 
 Takes a list of references to scalars (max 255) to store the fields fetched
-C<by getline_hr ()> in. When you don't pass enough references to store the
+C<getline ()> in. When you don't pass enough references to store the
 fetched fields in, C<getline ()> will fail. If you pass more than there are
 fields to return, the remaining references are left untouched.
 
@@ -1078,6 +1087,7 @@ C<combine ()> or C<parse ()>, whichever was called more recently.
 
 =head2 error_diag
 
+ Text::CSV_XS->error_diag ();
  $csv->error_diag ();
  $error_code  = 0  + $csv->error_diag ();
  $error_str   = "" . $csv->error_diag ();
@@ -1095,6 +1105,9 @@ message in that order.
 If called in scalar context, it will return the diagnostics in a single
 scalar, a-la $!. It will contain the error code in numeric context, and
 the diagnostics message in string context.
+
+When called as a class method or a direct function call, the error diag
+is that of the last C<new ()> call.
 
 =head1 INTERNALS
 

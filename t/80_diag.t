@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;
 
- use Test::More tests => 66;
+ use Test::More tests => 71;
 #use Test::More "no_plan";
 
 my %err;
@@ -37,10 +37,10 @@ sub parse_err ($$)
     is ($s_diag, $s_err,	"Str diag in list context");
     } # parse_err
 
-parse_err 2023, qq{2023,",2008-04-05,"Foo, Bar",\n};
+parse_err 2023, qq{2023,",2008-04-05,"Foo, Bar",\n}; # "
 
 $csv = Text::CSV_XS->new ({ escape_char => "+", eol => "\n" });
-is ($csv->error_diag (), undef,		"No errors yet");
+is ($csv->error_diag (), "",		"No errors yet");
 
 parse_err 2010, qq{"x"\r};
 parse_err 2011, qq{"x"x};
@@ -59,7 +59,28 @@ diag ("Next line should be an error message");
 $csv->error_diag ();
 
 is (Text::CSV_XS->new ({ ecs_char => ":" }), undef, "Unsupported option");
+
 is (Text::CSV_XS::error_diag (), "Unknown attribute 'ecs_char'",
 					"Last failure for new () - FAIL");
 is (Text::CSV_XS->error_diag (), "Unknown attribute 'ecs_char'",
 					"Last failure for new () - FAIL");
+is (Text::CSV_XS::error_diag (bless {}, "Foo"), "Unknown attribute 'ecs_char'",
+					"Last failure for new () - FAIL");
+
+package Text::CSV_XS::Subclass;
+
+use base "Text::CSV_XS";
+
+use Test::More;
+
+ok (1, "Subclassed");
+
+my $csvs = Text::CSV_XS::Subclass->new ();
+is ($csvs->error_diag (), "",		"Last failure for new () - OK");
+
+is (Text::CSV_XS::Subclass->new ({ ecs_char => ":" }), undef, "Unsupported option");
+
+is (Text::CSV_XS::Subclass->error_diag (),
+    "Unknown attribute 'ecs_char'",	"Last failure for new () - FAIL");
+
+1;
