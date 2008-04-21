@@ -128,7 +128,7 @@ xs_error_t xs_errors[] =  {
     /*  EIQ - Error Inside Quotes */
     { 2021, "EIQ - NL char inside quotes, binary off"				},
     { 2022, "EIQ - CR char inside quotes, binary off"				},
-    { 2023, "EIQ - QUO ..."							},
+    { 2023, "EIQ - QUO character not allowed"					},
     { 2024, "EIQ - EOF cannot be escaped, not even inside quotes"		},
     { 2025, "EIQ - Loose unescaped escape"					},
     { 2026, "EIQ - Binary character inside quoted field, binary off"		},
@@ -182,6 +182,8 @@ static SV *SetDiag (csv_t *csv, int xse)
 	SvIOK_on (err);
 	hv_store (csv->self, "_ERROR_DIAG", 11, err, 0);
 	}
+    if (xse == 0)
+	hv_store (csv->self, "_ERROR_POS",  10, newSViv (0), 0);
     return (err);
     } /* SetDiag */
 
@@ -377,11 +379,15 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 
 	if (i > 0)
 	    CSV_PUT (csv, dst, csv->sep_char);
-	if ((svp = av_fetch (fields, i, 0)) && *svp && SvOK (*svp)) {
+	if ((svp = av_fetch (fields, i, 0)) && *svp) {
 	    STRLEN	 len;
-	    char	*ptr = SvPV (*svp, len);
+	    char	*ptr;
 	    int		 quoteMe = csv->always_quote;
 
+	    unless ((SvOK (*svp) || (
+		    (SvMAGICAL (*svp) && (mg_get (*svp), 1) && SvOK (*svp)))
+		    )) continue;
+	    ptr = SvPV (*svp, len);
 	    /* Do we need quoting? We do quote, if the user requested
 	     * (always_quote), if binary or blank characters are found
 	     * and if the string contains quote or escape characters.
@@ -450,8 +456,9 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 #if MAINT_DEBUG
 static char str_parsed[40];
 #endif
-static void ParseError (csv_t *csv, int xse)
+static void ParseError (csv_t *csv, int xse, int pos)
 {
+    hv_store (csv->self, "_ERROR_POS", 10, newSViv (pos), 0);
     if (csv->tmp) {
 	if (hv_store (csv->self, "_ERROR_INPUT", 12, csv->tmp, 0))
 	    SvREFCNT_inc (csv->tmp);
@@ -507,12 +514,12 @@ static int CsvGet (csv_t *csv, SV *src)
 
 #define ERROR_INSIDE_QUOTES(diag_code) {	\
     SvREFCNT_dec (sv);				\
-    ParseError (csv, diag_code);		\
+    ParseError (csv, diag_code, spl);		\
     return FALSE;				\
     }
 #define ERROR_INSIDE_FIELD(diag_code) {		\
     SvREFCNT_dec (sv);				\
-    ParseError (csv, diag_code);		\
+    ParseError (csv, diag_code, spl);		\
     return FALSE;				\
     }
 
@@ -615,8 +622,8 @@ static int Parse (csv_t *csv, SV *src, AV *fields, AV *fflags)
     STRLEN	 len;
     int		 seenSomething		= FALSE;
     int		 fnum			= 0;
-#if MAINT_DEBUG
     int		 spl			= -1;
+#if MAINT_DEBUG
     memset (str_parsed, 0, 40);
 #endif
 
@@ -630,8 +637,9 @@ static int Parse (csv_t *csv, SV *src, AV *fields, AV *fflags)
 	NewField;
 
 	seenSomething = TRUE;
+	spl++;
 #if MAINT_DEBUG
-	if (++spl < 39) str_parsed[spl] = c;
+	if (spl < 39) str_parsed[spl] = c;
 #endif
 restart:
 	if (c == csv->sep_char) {
@@ -781,7 +789,6 @@ restart:
 
 		if (!csv->escape_char || c != csv->escape_char) {
 		    /* Field is terminated */
-		    AV_PUSH;
 		    c2 = CSV_GET;
 
 #if ALLOW_ALLOW
@@ -792,30 +799,46 @@ restart:
 			}
 #endif
 
-		    if (c2 == csv->sep_char)
+		    if (c2 == csv->sep_char) {
+			AV_PUSH;
 			continue;
+			}
 
-		    if (c2 == EOF)
+		    if (c2 == EOF) {
+			AV_PUSH;
 			return TRUE;
+			}
 
 		    if (c2 == CH_CR) {
 			int	c3;
 
-			if (csv->eol_is_cr)
+			if (csv->eol_is_cr) {
+			    AV_PUSH;
 /* uncovered */		    return TRUE;
+			    }
 
 			c3 = CSV_GET;
-			if (c3 == CH_NL)
+			if (c3 == CH_NL) {
+			    AV_PUSH;
 /* uncovered */		    return TRUE;
+			    }
 
-			ParseError (csv, 2010);
+			ParseError (csv, 2010, spl);
 			return FALSE;
 			}
 
-		    if (c2 == CH_NL)
+		    if (c2 == CH_NL) {
+			AV_PUSH;
 			return TRUE;
+			}
 
-		    ParseError (csv, 2011);
+		    if (csv->allow_loose_quotes) {
+			CSV_PUT_SV (sv, c);
+			c = c2;
+			goto restart;
+			}
+
+		    ParseError (csv, 2011, spl);
 		    return FALSE;
 		    }
 
@@ -865,6 +888,12 @@ restart:
 			    return TRUE;
 			    }
 			}
+
+		    if (csv->allow_loose_quotes && csv->escape_char != csv->quote_char) {
+			CSV_PUT_SV (sv, c);
+			c = c2;
+			goto restart;
+			}
 #if ALLOW_ALLOW
 		    if (csv->allow_whitespace) {
 			while (c2 == CH_SPACE || c2 == CH_TAB) {
@@ -876,6 +905,7 @@ restart:
 			    }
 			}
 #endif
+
 		    ERROR_INSIDE_QUOTES (2023);
 		    }
 		}
@@ -1105,7 +1135,7 @@ Combine (self, dst, fields, useIO)
     AV	*av;
 
     CSV_XS_SELF;
-    av = (AV*)SvRV (fields);
+    av = (AV *)SvRV (fields);
     ST (0) = xsCombine (hv, av, dst, useIO) ? &PL_sv_yes : &PL_sv_undef;
     XSRETURN (1);
     /* XS Combine */

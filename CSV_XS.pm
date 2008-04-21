@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.42";
+$VERSION = "0.43";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -267,13 +267,14 @@ sub error_input
 sub error_diag
 {
     my $self = shift;
-    my @diag = (0, $last_new_err);
+    my @diag = (0, $last_new_err, 0);
 
     unless ($self && ref $self) {	# Class method or direct call
 	$last_new_err and $diag[0] = 1000;
 	}
     elsif ($self->isa (__PACKAGE__) && exists $self->{_ERROR_DIAG}) {
 	@diag = (0 + $self->{_ERROR_DIAG}, $self->{_ERROR_DIAG});
+	exists $self->{_ERROR_POS} and $diag[2] = 1 + $self->{_ERROR_POS};
 	}
     my $context = wantarray;
     unless (defined $context) {	# Void context
@@ -724,6 +725,18 @@ would result in a parse error. Though it is still bad practice to
 allow this format, we cannot help there are some vendors that make
 their applications spit out lines styled like this.
 
+In case there is B<really> bad CSV data, like
+
+ 1,"foo "bar" baz",42
+
+or
+
+ 1,""foo bar baz"",42
+
+there is a way to get that parsed, and leave the quotes inside the quoted
+field as-is. This can be achieved by setting C<allow_loose_quotes> B<AND>
+making sure that the C<escape_char> is I<not> equal to C<quote_char>.
+
 =item escape_char
 
 The character used for escaping certain characters inside quoted fields.
@@ -1089,9 +1102,9 @@ C<combine ()> or C<parse ()>, whichever was called more recently.
 
  Text::CSV_XS->error_diag ();
  $csv->error_diag ();
- $error_code  = 0  + $csv->error_diag ();
- $error_str   = "" . $csv->error_diag ();
- ($cde, $str) =      $csv->error_diag ();
+ $error_code   = 0  + $csv->error_diag ();
+ $error_str    = "" . $csv->error_diag ();
+ ($cde, $str, $pos) = $csv->error_diag ();
 
 If (and only if) an error occured, this function returns the diagnostics
 of that error.
@@ -1100,7 +1113,9 @@ If called in void context, it will print the internal error code and the
 associated error message to STDERR.
 
 If called in list context, it will return the error code and the error
-message in that order.
+message in that order. If the last error was from parsing, the third
+value returned is the best guess at the location within the line that was
+being parsed. It's value is 1-based.
 
 If called in scalar context, it will return the diagnostics in a single
 scalar, a-la $!. It will contain the error code in numeric context, and
@@ -1109,6 +1124,12 @@ the diagnostics message in string context.
 When called as a class method or a direct function call, the error diag
 is that of the last C<new ()> call.
 
+=head2 SetDiag
+
+ $csv->SetDiag (0);
+
+Use to reset the diagnosticts if you are dealing with errors.
+
 =head1 INTERNALS
 
 =over 4
@@ -1116,8 +1137,6 @@ is that of the last C<new ()> call.
 =item Combine (...)
 
 =item Parse (...)
-
-=item SetDiag (...)
 
 =back
 
@@ -1186,6 +1205,9 @@ Reading a CSV file line by line:
       # do something with @$row
       }
   close $fh;
+
+For more extended examples, see the C<examples/> subdirectory in the
+original distribution.
 
 =head1 TODO
 
@@ -1395,8 +1417,8 @@ has been selected with the constructor.
 
 =item 2023 "EIQ - QUO ..."
 
-I have not been able yet to generate this error. Please inform me how you
-got it when you get it.
+Sequences like C<"foo "bar" baz",quux> and C<2023,",2008-04-05,"Foo, Bar",\n>
+will cause this error.
 
 =item 2024 "EIQ - EOF cannot be escaped, not even inside quotes"
 

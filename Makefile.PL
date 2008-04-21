@@ -37,6 +37,7 @@ my %wm = (
 			 CSV_XS.gcno
 			 CSV_XS.xs.gcov
 			 cover_db
+			 valgrind.log
 			 )
 		      },
     );
@@ -50,6 +51,19 @@ package MY;
 
 sub postamble
 {
+    my $valgrind = join " ", qw(
+	PERL_DESTRUCT_LEVEL=2 PERL_DL_NONLAZY=1
+	    valgrind
+		--suppressions=sandbox/perl.supp
+		--leak-check=yes
+		--leak-resolution=high
+		--show-reachable=yes
+		--num-callers=50
+		--log-fd=3
+		$(FULLPERLRUN) "-MExtUtils::Command::MM" "-e"
+		    "test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')"
+		    $(TEST_FILES) 3>valgrind.log
+		    );
     join "\n" =>
 	'cover test_cover:',
 	'	cover -delete',
@@ -58,6 +72,13 @@ sub postamble
 	'	gcov CSV_XS.c 2>/dev/null',
 	'	find * -name \*.gcov -exec gcov2perl {} \;',
 	'	cover',
+	'',
+	'leakcheck:',
+	"	$valgrind",
+	'	-@tail -5 valgrind.log',
+	'',
+	'leaktest:',
+	q{	sandbox/leaktest $(FULLPERLRUN) "test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')" $(TEST_FILES)},
 	'',
 	'fixmeta:	distmeta',
 	'	perl genMETA.pl',
