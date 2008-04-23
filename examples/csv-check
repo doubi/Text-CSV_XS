@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-our $VERSION = "1.0";	# 2008-04-17
+our $VERSION = "1.1";	# 2008-04-17
 
 sub usage
 {
@@ -28,6 +28,11 @@ GetOptions (
     ) or usage (1);
 
 use Text::CSV_XS;
+
+if (@ARGV && -f $ARGV[0] && !-s $ARGV[0]) {
+    print STDERR "$ARGV[0] is empty\n";
+    exit 0;
+    }
 
 my ($bin, $rows, %cols, $firstline) = (0, 0);
 unless ($sep) { # No sep char passed, try to auto-detect;
@@ -59,6 +64,7 @@ my $csv = Text::CSV_XS-> new ({
 
 sub done
 {
+    print "Checked with $0 $VERSION using Text::CSV_XS $Text::CSV_XS::VERSION\n";
     my @diag = $csv->error_diag;
     if ($diag[0] == 2012 && $csv->eof) {
 	my @coll = sort { $a <=> $b } keys %cols;
@@ -68,9 +74,19 @@ sub done
 	print "    sep = <$sep>, quo = <$quo>, bin = <$bin>\n";
 	exit 0;
 	}
-    my $loc = $.;
-    $diag[2] and $loc .= "/$diag[2]";
-    print "$ARGV line $loc - $diag[1]\n";
+
+    if ($diag[2]) {
+	print "$ARGV line $./$diag[2] - $diag[0] - $diag[1]\n";
+	my $ep  = $diag[2] - 1; # diag[2] is 1-based
+	my $err = $csv->error_input . "         ";
+	substr $err, $ep + 1, 0, "*";
+	substr $err, $ep,     0, "*";
+	($err = substr $err, $ep - 5, 12) =~ s/ +$//;
+	print "    |$err|\n";
+	}
+    else {
+	print "$ARGV line $. - $diag[1]\n";
+	}
     exit $diag[0];
     } # done
 

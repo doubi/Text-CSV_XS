@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.43";
+$VERSION = "0.44";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -441,7 +441,7 @@ sub getline_hr
 {
     my ($self, @args, %hr) = @_;
     $self->{_COLUMN_NAMES} or croak ($self->SetDiag (3002));
-    my $fr = $self->getline (@args) or return undef;
+    my $fr = $self->getline (@args) or return;
     @hr{@{$self->{_COLUMN_NAMES}}} = @$fr;
     \%hr;
     } # getline_hr
@@ -1114,8 +1114,9 @@ associated error message to STDERR.
 
 If called in list context, it will return the error code and the error
 message in that order. If the last error was from parsing, the third
-value returned is the best guess at the location within the line that was
-being parsed. It's value is 1-based.
+value returned is a best guess at the location within the line that was
+being parsed. It's value is 1-based. See C<examples/csv-check> for how
+this can be used.
 
 If called in scalar context, it will return the diagnostics in a single
 scalar, a-la $!. It will contain the error code in numeric context, and
@@ -1207,7 +1208,10 @@ Reading a CSV file line by line:
   close $fh;
 
 For more extended examples, see the C<examples/> subdirectory in the
-original distribution.
+original distribution. Included is C<examples/parser-xs.pl>, that could
+be used to `fix' bad CSV
+
+  perl examples/parser-xs.pl bad.csv >good.csv
 
 =head1 TODO
 
@@ -1272,15 +1276,6 @@ then behaves transparently (but slower), something like this:
         encoding_in  => "iso-8859-1", # Only the input
         encoding_out => "cp1252",     # Only the output
         });
-
-=item Double double quotes
-
-There seem to be applications around that write their dates like
-
-   1,4,""12/11/2004"",4,1
-
-If we would support that, probably through allow_double_quoted
-Definitely belongs in t/65_allow.t
 
 =item Parse the whole file at once
 
