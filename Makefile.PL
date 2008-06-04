@@ -64,6 +64,12 @@ sub postamble
 		    "test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')"
 		    $(TEST_FILES) 3>valgrind.log
 		    );
+
+    my $min_vsn = $] < 5.010 ? "" : join "\n" =>
+	'test ::',
+	'	-@env TEST_FILES="xt/*.t" make -e test_dynamic',
+	'';
+
     join "\n" =>
 	'cover test_cover:',
 	'	cover -delete',
@@ -81,7 +87,7 @@ sub postamble
 	q{	sandbox/leaktest $(FULLPERLRUN) "test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')" $(TEST_FILES)},
 	'',
 	'fixmeta:	distmeta',
-	'	perl genMETA.pl',
+	'	perl sandbox/genMETA.pl',
 	'',
 	'tgzdist:	fixmeta $(DISTVNAME).tar.gz distcheck',
 	'	-@mv -f $(DISTVNAME).tar.gz $(DISTVNAME).tgz',
@@ -89,5 +95,6 @@ sub postamble
 	'',
 	'test_speed: pure_all',
 	'	PERL_DL_NONLAZY=1 $(FULLPERLRUN) -I"$(INST_LIB)" -I"$(INST_ARCHLIB)" examples/speed.pl',
-	'';
+	'',
+	$min_vsn;
     } # postamble

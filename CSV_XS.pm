@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.45";
+$VERSION = "0.46";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -547,6 +547,15 @@ or, more safely in perl 5.6 and up
  while (my $row = $csv->getline ($io)) {
      my @fields = @$row;
  
+=head2 Unicode (UTF8)
+
+On parsing (both for C<getline ()> and C<parse ()>), if the source is
+marked being UTF8, then parsing that source will mark all fields that
+are marked binary will also be marked UTF8.
+
+On combining (C<print ()> and C<combine ()>), if any of the combining
+fields was marked UTF8, the resulting string will be marked UTF8.
+
 =head1 SPECIFICATION
 
 While no formal specification for CSV exists, RFC 4180 1) describes a common
@@ -1165,7 +1174,7 @@ An example for creating CSV files:
       my $err = $csv->error_input;
       print "combine () failed on argument: ", $err, "\n";
       }
-  close $csv_fh;
+  close $csv_fh or die "hello.csv: $!";
 
 An example for parsing CSV strings:
 
@@ -1194,9 +1203,9 @@ Dumping the content of a database ($dbh) table ($tbl) to CSV:
   $sth->execute;
   $csv->print ($fh, $sth->{NAME_lc});
   while (my $row = $sth->fetch) {
-      $csv->print ($fh, $row);
+      $csv->print ($fh, $row) or ...;
       }
-  close $fh;
+  close $fh or die "$tbl.csv: $!";
 
 Reading a CSV file line by line:
 
@@ -1205,7 +1214,7 @@ Reading a CSV file line by line:
   while (my $row = $csv->getline ($fh)) {
       # do something with @$row
       }
-  close $fh;
+  close $fh or die "file.csv: $!";;
 
 For more extended examples, see the C<examples/> subdirectory in the
 original distribution. Included is C<examples/parser-xs.pl>, that could
@@ -1262,11 +1271,10 @@ Using C<getline ()> and C<print ()> instead is the prefered way to go.
 
 =item Unicode
 
-Make C<parse ()> and C<combine ()> do the right thing for Unicode
-(UTF-8) if requested. See t/50_utf8.t. More complicated, but evenly
-important, also for C<getline ()> and C<print ()>.
+We probably need many more tests to check if all edge-cases are covered.
+See t/50_utf8.t.
 
-Probably the best way to do this is to make a subclass
+Probably the best way to do this more reliable is to make a subclass
 Text::CSV_XS::Encoded that can be passed the required encoding and
 then behaves transparently (but slower), something like this:
 
