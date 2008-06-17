@@ -90,7 +90,7 @@ typedef struct {
 
     byte	blank_is_undef;
     byte	verbatim;
-    byte	is_bound;
+    long	is_bound;
     byte	reserved1;
 #endif
 
@@ -156,7 +156,6 @@ xs_error_t xs_errors[] =  {
     { 3002, "EHR - getline_hr () called before column_names ()"			},
     { 3003, "EHR - bind_columns () and column_names () fields count mismatch"	},
     { 3004, "EHR - bind_columns () only accepts refs to scalars"		},
-    { 3005, "EHR - bind_columns () takes 254 refs max"				},
     { 3006, "EHR - bind_columns () did not pass enough refs for parsed fields"	},
     { 3007, "EHR - bind_columns needs refs to writeable scalars"		},
     { 3008, "EHR - unexpected error in bound fields"				},
@@ -221,7 +220,6 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->blank_is_undef		= csv->cache[CACHE_ID_blank_is_undef	];
 	csv->verbatim			= csv->cache[CACHE_ID_verbatim		];
 #endif
-	csv->is_bound			= csv->cache[CACHE_ID__is_bound		];
 	csv->eol_is_cr			= csv->cache[CACHE_ID_eol_is_cr		];
 	csv->eol_len			= csv->cache[CACHE_ID_eol_len		];
 	if (csv->eol_len < 8)
@@ -236,6 +234,11 @@ static void SetupCsv (csv_t *csv, HV *self)
 		csv->eol_is_cr = 0;
 		}
 	    }
+	csv->is_bound			=
+	    (csv->cache[CACHE_ID__is_bound    ] << 24) |
+	    (csv->cache[CACHE_ID__is_bound + 1] << 16) |
+	    (csv->cache[CACHE_ID__is_bound + 2] <<  8) |
+	    (csv->cache[CACHE_ID__is_bound + 3]);
 
 	csv->types = NULL;
 	if (csv->cache[CACHE_ID_has_types]) {
@@ -315,12 +318,15 @@ static void SetupCsv (csv_t *csv, HV *self)
 	csv->cache[CACHE_ID_blank_is_undef]		= csv->blank_is_undef;
 	csv->cache[CACHE_ID_verbatim]			= csv->verbatim;
 #endif
-	csv->cache[CACHE_ID__is_bound]			= csv->is_bound;
 	csv->cache[CACHE_ID_eol_is_cr]			= csv->eol_is_cr;
 	csv->cache[CACHE_ID_eol_len]			= csv->eol_len;
 	if (csv->eol_len > 0 && csv->eol_len < 8 && csv->eol)
 	    strcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol);
 	csv->cache[CACHE_ID_has_types]			= csv->types ? 1 : 0;
+	csv->cache[CACHE_ID__is_bound    ] = (csv->is_bound & 0xFF000000) >> 24;
+	csv->cache[CACHE_ID__is_bound + 1] = (csv->is_bound & 0x00FF0000) >> 16;
+	csv->cache[CACHE_ID__is_bound + 2] = (csv->is_bound & 0x0000FF00) >>  8;
+	csv->cache[CACHE_ID__is_bound + 3] = (csv->is_bound & 0x000000FF);
 
 	if ((csv->tmp = newSVpvn ((char *)csv->cache, CACHE_SIZE)))
 	    hv_store (self, "_CACHE", 6, csv->tmp, 0);
@@ -428,11 +434,15 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 		int	e = 0;
 
 		if (!csv->binary && is_csv_binary (c)) {
-		    SvREFCNT_inc (*svp);
-		    unless (hv_store (csv->self, "_ERROR_INPUT", 12, *svp, 0))
-			SvREFCNT_dec (*svp);
-		    (void)SetDiag (csv, 2110);
-		    return FALSE;
+		    if (SvUTF8 (*svp))
+			csv->binary = 1;
+		    else {
+			SvREFCNT_inc (*svp);
+			unless (hv_store (csv->self, "_ERROR_INPUT", 12, *svp, 0))
+			    SvREFCNT_dec (*svp);
+			(void)SetDiag (csv, 2110);
+			return FALSE;
+			}
 		    }
 		if (csv->quote_char  && c == csv->quote_char)
 		    e = 1;
@@ -1004,7 +1014,7 @@ restart:
 	    if (f & CSV_FLAGS_QUO) {
 		if (is_csv_binary (c)) {
 		    f |= CSV_FLAGS_BIN;
-		    unless (csv->binary)
+		    unless (csv->binary || csv->utf8)
 			ERROR_INSIDE_QUOTES (2026);
 		    }
 		CSV_PUT_SV (c);
@@ -1012,7 +1022,7 @@ restart:
 	    else {
 		if (is_csv_binary (c)) {
 		    f |= CSV_FLAGS_BIN;
-		    unless (csv->binary)
+		    unless (csv->binary || csv->utf8)
 			ERROR_INSIDE_FIELD (2037);
 		    }
 		CSV_PUT_SV (c);
