@@ -181,14 +181,14 @@ static SV *SetDiag (csv_t *csv, int xse)
 
     while (xs_errors[i].xs_errno && xs_errors[i].xs_errno != xse) i++;
     if ((err = newSVpv (xs_errors[i].xs_errstr, 0))) {
-	sv_upgrade (err, SVt_PVIV);
-	SvIV_set (err, xse);
-	SvIOK_on (err);
-	hv_store (csv->self, "_ERROR_DIAG",  11, err,           0);
+	SvUPGRADE (err, SVt_PVIV);
+	SvIV_set  (err, xse);
+	SvIOK_on  (err);
+	hv_store  (csv->self, "_ERROR_DIAG",  11, err,           0);
 	}
     if (xse == 0) {
-	hv_store (csv->self, "_ERROR_POS",   10, newSViv  (0),  0);
-	hv_store (csv->self, "_ERROR_INPUT", 12, newSVpvs (""), 0);
+	hv_store  (csv->self, "_ERROR_POS",   10, newSViv  (0),  0);
+	hv_store  (csv->self, "_ERROR_INPUT", 12, newSVpvs (""), 0);
 	}
     return (err);
     } /* SetDiag */
@@ -818,8 +818,8 @@ restart:
 
 #if ALLOW_ALLOW
 		    if (csv->allow_whitespace) {
-/* uncovered */		while (c2 == CH_SPACE || c2 == CH_TAB) {
-/* uncovered */		    c2 = CSV_GET;
+			while (c2 == CH_SPACE || c2 == CH_TAB) {
+			    c2 = CSV_GET;
 			    }
 			}
 #endif
@@ -839,13 +839,13 @@ restart:
 
 			if (csv->eol_is_cr) {
 			    AV_PUSH;
-/* uncovered */		    return TRUE;
+			    return TRUE;
 			    }
 
 			c3 = CSV_GET;
 			if (c3 == CH_NL) {
 			    AV_PUSH;
-/* uncovered */		    return TRUE;
+			    return TRUE;
 			    }
 
 			ParseError (csv, 2010, csv->used - 2);
@@ -914,20 +914,11 @@ restart:
 			    }
 			}
 
+#if ALLOW_ALLOW
 		    if (csv->allow_loose_quotes && csv->escape_char != csv->quote_char) {
 			CSV_PUT_SV (c);
 			c = c2;
-			goto restart;
-			}
-#if ALLOW_ALLOW
-		    if (csv->allow_whitespace) {
-			while (c2 == CH_SPACE || c2 == CH_TAB) {
-/* uncovered */		    c2 = CSV_GET;
-			    }
-			if (c2 == csv->sep_char || c2 == EOF) {
-/* uncovered */		    c = c2;
-/* uncovered */		    goto restart;
-			    }
+/* uncovered */		goto restart;
 			}
 #endif
 

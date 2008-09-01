@@ -4,7 +4,7 @@ use strict;
 $^W = 1;
 
 #use Test::More "no_plan";
- use Test::More tests => 829;
+ use Test::More tests => 838;
 
 BEGIN {
     use_ok "Text::CSV_XS", ();
@@ -312,6 +312,20 @@ foreach my $bin (0, 1) {
     is ($row->[2], "*\r\n",			"#\\r\\n $gc fld 2");
 
     close FH;
+
+    $csv = Text::CSV_XS->new ({
+	binary		=> 0,
+	verbatim	=> 1,
+	eol		=> "#\r\n",
+	});
+    open  FH, ">_test.csv";
+    print FH $str[1];
+    close FH;
+    open  FH, "<_test.csv";
+    is ($csv->getline (*FH), undef,	"#\\r\\n $gc getline 2030");
+    is (0 + $csv->error_diag (), 2030,	"Got 2030");
+    close FH;
+
     unlink "_test.csv";
     }
 
@@ -345,4 +359,19 @@ foreach my $bin (0, 1) {
     is ($csv->is_quoted (3), 1,			"Is field 3 quoted?");
     close FH;
     unlink "_test.csv";
+    }
+
+{   my $csv = Text::CSV_XS->new ({});
+
+    my $s2023 = qq{2023,",2008-04-05,"  \tFoo, Bar",\n}; # "
+    #                                ^
+
+    is ($csv->parse ($s2023), 0,		"Parse 2023");
+    is (($csv->error_diag ())[0], 2023,		"Fail code 2023");
+    is (($csv->error_diag ())[2], 19,		"Fail position");
+
+    is ($csv->allow_whitespace (1), 1,		"Allow whitespace");
+    is ($csv->parse ($s2023), 0,		"Parse 2023");
+    is (($csv->error_diag ())[0], 2023,		"Fail code 2023");
+    is (($csv->error_diag ())[2], 22,		"Space is eaten now");
     }

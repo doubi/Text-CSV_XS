@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.52";
+$VERSION = "0.53";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -94,6 +94,7 @@ sub new
 	}
     $last_new_err = "";
     my $self  = {%def_attr, %{$attr}};
+    defined $\ and $self->{eol} = $\;
     bless $self, $class;
     defined $self->{types} and $self->types ($self->{types});
     $self;
@@ -1182,25 +1183,6 @@ as the API may change in future releases.
 
 =head1 EXAMPLES
 
-An example for creating CSV files:
-
-  my $csv = Text::CSV_XS->new;
-
-  open my $csv_fh, ">", "hello.csv" or die "hello.csv: $!";
-
-  my @sample_input_fields = (
-      'You said, "Hello!"',   5.67,
-      '"Surely"',   '',   '3.14159');
-  if ($csv->combine (@sample_input_fields)) {
-      my $string = $csv->string;
-      print $csv_fh "$string\n";
-      }
-  else {
-      my $err = $csv->error_input;
-      print "combine () failed on argument: ", $err, "\n";
-      }
-  close $csv_fh or die "hello.csv: $!";
-
 An example for parsing CSV strings:
 
   my $csv = Text::CSV_XS->new ({ keep_meta_info => 1, binary => 1 });
@@ -1220,7 +1202,27 @@ An example for parsing CSV strings:
       $csv->error_diag ();
       }
 
-Dumping the content of a database ($dbh) table ($tbl) to CSV:
+An example for creating CSV files:
+
+  my $csv = Text::CSV_XS->new;
+
+  open my $csv_fh, ">", "hello.csv" or die "hello.csv: $!";
+
+  my @sample_input_fields = (
+      'You said, "Hello!"',   5.67,
+      '"Surely"',   '',   '3.14159');
+  if ($csv->combine (@sample_input_fields)) {
+      my $string = $csv->string;
+      print $csv_fh "$string\n";
+      }
+  else {
+      my $err = $csv->error_input;
+      print "combine () failed on argument: ", $err, "\n";
+      }
+  close $csv_fh or die "hello.csv: $!";
+
+Or using the C<print ()> method, which is fater like in
+dumping the content of a database ($dbh) table ($tbl) to CSV:
 
   my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
   open my $fh, ">", "$tbl.csv" or die "$tbl.csv: $!";
@@ -1441,18 +1443,33 @@ has been selected with the constructor.
 Sequences like C<1,"foo\rbar",2> are only allowed when the binary option
 has been selected with the constructor.
 
-=item 2023 "EIQ - QUO ..."
+=item 2023 "EIQ - QUO character not allowed
 
 Sequences like C<"foo "bar" baz",quux> and C<2023,",2008-04-05,"Foo, Bar",\n>
 will cause this error.
 
 =item 2024 "EIQ - EOF cannot be escaped, not even inside quotes"
 
+The escape character is not allowed as last character in an input stream.
+
 =item 2025 "EIQ - Loose unescaped escape"
+
+An escape character should escape only characters that need escaping. Allowing
+the escape for other characters is possible with the C<allow_loose_escape>
+attribute.
 
 =item 2026 "EIQ - Binary character inside quoted field, binary off"
 
+Binary characters are not allowed by default. Exceptions are fields that
+contain valid UTF-8, that will automatically be upgraded is the content is
+valid UTF-8. Pass the C<binary> attribute with a true value to accept binary
+characters.
+
 =item 2027 "EIQ - Quoted field not terminated"
+
+When parsing a field that started with a quotation character, the field is
+expected to be closed with a quotation charater. When the parsed line is
+exhausted before the quote is found, that field is not terminated.
 
 =item 2030 "EIF - NL char inside unquoted verbatim, binary off"
 
