@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.53";
+$VERSION = "0.54";
 @ISA     = qw( DynaLoader );
 
 sub PV { 0 }
@@ -1486,6 +1486,8 @@ exhausted before the quote is found, that field is not terminated.
 =item 2037 "EIF - Binary character in unquoted field, binary off"
 
 =item 2110 "ECB - Binary character in Combine, binary off"
+
+=item 2200 "EIO - print to IO failed. See errno"
 
 =item 3001 "EHR - Unsupported syntax for column_names ()"
 

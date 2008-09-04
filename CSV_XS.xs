@@ -151,6 +151,9 @@ xs_error_t xs_errors[] =  {
     /* Combine errors */
     { 2110, "ECB - Binary character in Combine, binary off"			},
 
+    /* IO errors */
+    { 2200, "EIO - print to IO failed. See errno"				},
+
     /* Hash-Ref errors */
     { 3001, "EHR - Unsupported syntax for column_names ()"			},
     { 3002, "EHR - getline_hr () called before column_names ()"			},
@@ -357,8 +360,11 @@ static int Print (csv_t *csv, SV *dst)
 	PUTBACK;
 	result = call_method ("print", G_SCALAR);
 	SPAGAIN;
-	if (result)
+	if (result) {
 	    result = POPi;
+	    unless (result)
+		SetDiag (csv, 2200);
+	    }
 	PUTBACK;
 	SvREFCNT_dec (tmp);
 	}
@@ -373,8 +379,10 @@ static int Print (csv_t *csv, SV *dst)
     } /* Print */
 
 #define CSV_PUT(csv,dst,c) {				\
-    if ((csv)->used == sizeof ((csv)->buffer) - 1)	\
-        Print ((csv), (dst));				\
+    if ((csv)->used == sizeof ((csv)->buffer) - 1) {	\
+        unless (Print ((csv), (dst)))			\
+	    return FALSE;				\
+        }						\
     (csv)->buffer[(csv)->used++] = (c);			\
     }
 
@@ -444,10 +452,10 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 			return FALSE;
 			}
 		    }
-		if (csv->quote_char  && c == csv->quote_char)
+		if (c == csv->quote_char  && csv->quote_char)
 		    e = 1;
 		else
-		if (csv->escape_char && c == csv->escape_char)
+		if (c == csv->escape_char && csv->escape_char)
 		    e = 1;
 		else
 		if (c == (char)0) {
@@ -470,7 +478,7 @@ static int Combine (csv_t *csv, SV *dst, AV *fields)
 	    CSV_PUT (csv, dst, *ptr++);
 	}
     if (csv->used)
-	Print (csv, dst);
+	return Print (csv, dst);
     return TRUE;
     } /* Combine */
 
@@ -799,7 +807,7 @@ restart:
 		}
 	    } /* CH_CR */
 	else
-	if (csv->quote_char && c == csv->quote_char) {
+	if (c == csv->quote_char && csv->quote_char) {
 #if MAINT_DEBUG > 1
 	    fprintf (stderr, "# %d/%d/%02x pos %d = QUO '%c'\n",
 		waitingForField ? 1 : 0, sv ? 1 : 0, f, spl, c);
@@ -938,7 +946,7 @@ restart:
 		ERROR_INSIDE_FIELD (2034);
 	    } /* QUO char */
 	else
-	if (csv->escape_char && c == csv->escape_char) {
+	if (c == csv->escape_char && csv->escape_char) {
 #if MAINT_DEBUG > 1
 	    fprintf (stderr, "# %d/%d/%02x pos %d = ESC '%c'\n",
 		waitingForField ? 1 : 0, sv ? 1 : 0, f, spl, c);
@@ -1022,7 +1030,7 @@ restart:
 
 	/* continue */
 #if ALLOW_ALLOW
-	if (csv->useIO && csv->verbatim && csv->used == csv->size)
+	if (csv->verbatim && csv->useIO && csv->used == csv->size)
 	    break;
 #endif
 	}
