@@ -16,7 +16,7 @@ package Text::CSV_XS;
 # Based on Text::CSV by:
 #    Alan Citterman <alan@mfgrtl.com>
 #
-# Extended by:
+# Extended and Remodelled by:
 #    H.Merijn Brand (h.m.brand@xs4all.nl)
 #
 ############################################################################
@@ -30,8 +30,9 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.54";
+$VERSION = "0.55";
 @ISA     = qw( DynaLoader );
+bootstrap Text::CSV_XS $VERSION;
 
 sub PV { 0 }
 sub IV { 1 }
@@ -77,7 +78,7 @@ my %def_attr = (
     _COLUMN_NAMES	=> undef,
     _BOUND_COLUMNS	=> undef,
     );
-my $last_new_err = "";
+my $last_new_err = Text::CSV_XS->SetDiag (0);
 
 sub new
 {
@@ -92,9 +93,9 @@ sub new
 	$last_new_err = "Unknown attribute '$_'";
 	return;
 	}
-    $last_new_err = "";
+    $last_new_err = SetDiag (undef, 0);
     my $self  = {%def_attr, %{$attr}};
-    defined $\ and $self->{eol} = $\;
+    defined $\ && !exists $attr->{eol} and $self->{eol} = $\;
     bless $self, $class;
     defined $self->{types} and $self->types ($self->{types});
     $self;
@@ -666,8 +667,8 @@ Currently the following attributes are available:
 =item eol
 
 An end-of-line string to add to rows, usually C<undef> (nothing,
-default), C<"\012"> (Line Feed) or C<"\015\012"> (Carriage Return,
-Line Feed). Cannot be longer than 7 (ASCII) characters.
+default = C<$\>), C<"\012"> (Line Feed) or C<"\015\012"> (Carriage
+Return, Line Feed). Cannot be longer than 7 (ASCII) characters.
 
 If both C<$/> and C<eol> equal C<"\015">, parsing lines that end on
 only a Carriage Return without Line Feed, will be C<parse>d correct.
@@ -682,6 +683,8 @@ Limited to a single-byte character, usually in the range from 0x20
 
 The separation character can not be equal to the quote character.
 The separation character can not be equal to the escape character.
+
+See also CAVEATS
 
 =item allow_whitespace
 
@@ -868,7 +871,7 @@ is equivalent to
      quote_char          => '"',
      escape_char         => '"',
      sep_char            => ',',
-     eol                 => '',
+     eol                 => $\,
      always_quote        => 0,
      binary              => 0,
      keep_meta_info      => 0,
@@ -1221,7 +1224,7 @@ An example for creating CSV files:
       }
   close $csv_fh or die "hello.csv: $!";
 
-Or using the C<print ()> method, which is fater like in
+Or using the C<print ()> method, which is faster like in
 dumping the content of a database ($dbh) table ($tbl) to CSV:
 
   my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
@@ -1241,13 +1244,31 @@ Reading a CSV file line by line:
   while (my $row = $csv->getline ($fh)) {
       # do something with @$row
       }
-  close $fh or die "file.csv: $!";;
+  $csv->eof or $csv->error_diag;
+  close $fh or die "file.csv: $!";
 
 For more extended examples, see the C<examples/> subdirectory in the
 original distribution. Included is C<examples/parser-xs.pl>, that could
-be used to `fix' bad CSV
+be used to `fix' bad CSV and parse beyond errors.
 
   perl examples/parser-xs.pl bad.csv >good.csv
+
+=head1 CAVEATS
+
+C<Text::CSV_XS> is not designed to detect the characters used for field
+separation and quoting. The parsing is done using predefined settings. In
+the examples subdirectory, you can find scripts that demonstrate how you
+can try to detect these characters yourself.
+
+=head2 Microsoft Excel
+
+The import/export from Microsoft Excel is a I<risky task>, according to the
+documentation in C<Text::CSV::Separator>. Microsoft uses the system's default
+list separator defined in the regional settings, which happens to be a
+semicolon for Dutch, German and Spanish (and probably some others as well).
+For the English locale, the default is a comma. In Windows however, the user
+is free to choose a predefined locale, and then change every individual
+setting in it, so checking the locale is no solution.
 
 =head1 TODO
 
@@ -1268,14 +1289,6 @@ error_diag is a (very) good start, but there is more work to be done here.
 
 Basic calls should croak or warn on illegal parameters. Errors should be
 documented.
-
-=item eol
-
-Discuss an option to make the eol honor the $/ setting. Maybe
-
-  my $csv = Text::CSV_XS->new ({ eol => $/ });
-
-is already enough, and new options only make things less opaque.
 
 =item setting meta info
 
@@ -1468,7 +1481,7 @@ characters.
 =item 2027 "EIQ - Quoted field not terminated"
 
 When parsing a field that started with a quotation character, the field is
-expected to be closed with a quotation charater. When the parsed line is
+expected to be closed with a quotation character. When the parsed line is
 exhausted before the quote is found, that field is not terminated.
 
 =item 2030 "EIF - NL char inside unquoted verbatim, binary off"
@@ -1507,8 +1520,9 @@ exhausted before the quote is found, that field is not terminated.
 
 =head1 SEE ALSO
 
-L<perl(1)>, L<IO::File(3)>, L{IO::Handle(3)>, L<IO::Wrap(3)>,
-L<Text::CSV(3)>, L<Text::CSV_PP(3)>.  and L<Spreadsheet::Read(3)>.
+L<perl(1)>, L<IO::File(3)>, L<IO::Handle(3)>, L<IO::Wrap(3)>,
+L<Text::CSV(3)>, L<Text::CSV_PP(3)>, L<Text::CSV::Separator(3)>,
+and L<Spreadsheet::Read(3)>.
 
 =head1 AUTHORS and MAINTAINERS
 
