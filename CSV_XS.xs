@@ -1,4 +1,4 @@
-/*  Copyright (c) 2007-2008 H.Merijn Brand.  All rights reserved.
+/*  Copyright (c) 2007-2009 H.Merijn Brand.  All rights reserved.
  *  Copyright (c) 1998-2001 Jochen Wiedmann. All rights reserved.
  *  This program is free software; you can redistribute it and/or
  *  modify it under the same terms as Perl itself.
@@ -7,6 +7,8 @@
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
+#define NEED_PL_parser
+#define NEED_sv_2pv_flags
 #define NEED_load_module
 #define NEED_newRV_noinc
 #define NEED_vload_module
@@ -167,14 +169,15 @@ xs_error_t xs_errors[] =  {
     };
 
 static int  io_handle_loaded = 0;
+static SV  *m_getline, *m_print;
 
-#define require_IO_Handle					\
-    unless (io_handle_loaded) {					\
-	ENTER;							\
-	load_module (PERL_LOADMOD_NOIMPORT,			\
-	    newSVpv ("IO::Handle", 0), NULL, NULL, NULL);	\
-	LEAVE;							\
-	io_handle_loaded = 1;					\
+#define require_IO_Handle				\
+    unless (io_handle_loaded) {				\
+	ENTER;						\
+	load_module (PERL_LOADMOD_NOIMPORT,		\
+	    newSVpvs ("IO::Handle"), NULL, NULL, NULL);	\
+	LEAVE;						\
+	io_handle_loaded = 1;				\
 	}
 
 static SV *SvDiag (int xse)
@@ -193,7 +196,6 @@ static SV *SvDiag (int xse)
 
 static SV *SetDiag (csv_t *csv, int xse)
 {
-    int   i = 0;
     SV   *err = SvDiag (xse);
 
     if (err) {
@@ -368,7 +370,7 @@ static int Print (csv_t *csv, SV *dst)
 	PUSHs ((dst));
 	PUSHs (tmp);
 	PUTBACK;
-	result = call_method ("print", G_SCALAR);
+	result = call_sv (m_print, G_SCALAR | G_METHOD);
 	SPAGAIN;
 	if (result) {
 	    result = POPi;
@@ -520,7 +522,7 @@ static int CsvGet (csv_t *csv, SV *src)
 	EXTEND (sp, 1);
 	PUSHs (src);
 	PUTBACK;
-	result = call_method ("getline", G_SCALAR);
+	result = call_sv (m_getline, G_SCALAR | G_METHOD);
 	SPAGAIN;
 	csv->tmp = result ? POPs : NULL;
 	PUTBACK;
@@ -1160,7 +1162,11 @@ MODULE = Text::CSV_XS		PACKAGE = Text::CSV_XS
 
 PROTOTYPES: DISABLE
 
-SV*
+BOOT:
+    m_getline = newSVpvs ("getline");
+    m_print   = newSVpvs ("print");
+
+void
 SetDiag (self, xse)
     SV		*self
     int		 xse
@@ -1179,7 +1185,7 @@ SetDiag (self, xse)
     XSRETURN (1);
     /* XS SetDiag */
 
-SV*
+void
 Combine (self, dst, fields, useIO)
     SV		*self
     SV		*dst
@@ -1196,7 +1202,7 @@ Combine (self, dst, fields, useIO)
     XSRETURN (1);
     /* XS Combine */
 
-SV*
+void
 Parse (self, src, fields, fflags)
     SV		*self
     SV		*src

@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Copyright PROCURA B.V. (c) 2006-2008 H.Merijn Brand
+# Copyright PROCURA B.V. (c) 2006-2009 H.Merijn Brand
 
 require 5.005; # <- also see postamble at the bottom for META.yml
 use strict;
@@ -65,7 +65,7 @@ sub postamble
 		    $(TEST_FILES) 3>valgrind.log
 		    );
 
-    my $min_vsn = ($] >= 5.010 && -d "xt" && ($ENV{AUTOMATED_TESTING} || 0) != 1)
+    my $min_vsn = ($] >= 5.010 && -d "xt" && -d "tmp" && ($ENV{AUTOMATED_TESTING} || 0) != 1)
 	? join "\n" =>
 	    'test ::',
 	    '	-@env TEST_FILES="xt/*.t" make -e test_dynamic',
@@ -74,6 +74,7 @@ sub postamble
     join "\n" =>
 	'cover test_cover:',
 	'	ccache -C',
+	'	-@rm -f *.gc??',
 	'	cover -test',
 	'',
 	'leakcheck:',
@@ -84,6 +85,7 @@ sub postamble
 	q{	sandbox/leaktest $(FULLPERLRUN) "test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')" $(TEST_FILES)},
 	'',
 	'checkmeta:',
+	'	perl sandbox/genPPPort_h.pl',
 	'	perl sandbox/genMETA.pl -c',
 	'',
 	'fixmeta:	distmeta',

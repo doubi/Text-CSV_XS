@@ -1,6 +1,6 @@
 package Text::CSV_XS;
 
-# Copyright (c) 2007-2008 H.Merijn Brand.  All rights reserved.
+# Copyright (c) 2007-2009 H.Merijn Brand.  All rights reserved.
 # Copyright (c) 1998-2001 Jochen Wiedmann. All rights reserved.
 # Portions Copyright (c) 1997 Alan Citterman. All rights reserved.
 #
@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.58";
+$VERSION = "0.59";
 @ISA     = qw( DynaLoader );
 bootstrap Text::CSV_XS $VERSION;
 
@@ -87,7 +87,10 @@ sub new
     my $attr  = shift || {};
     my $class = ref ($proto) || $proto	or return;
     for (keys %{$attr}) {
-	m/^[a-z]/ && exists $def_attr{$_} and next;
+	if (m/^[a-z]/ && exists $def_attr{$_}) {
+	    $] >= 5.008002 && m/_char$/ and utf8::decode $attr->{$_};
+	    next;
+	    }
 #	croak?
 	$last_new_err = "Unknown attribute '$_'";
 	return;
@@ -126,6 +129,7 @@ sub _set_attr_C
 {
     my ($self, $name, $val) = @_;
     defined $val or $val = 0;
+    $] >= 5.008002 and utf8::decode $val;
     $self->{$name} = $val;
     $self->{_CACHE} or return;
     my @cache = unpack "C*", $self->{_CACHE};
@@ -650,6 +654,10 @@ FOR NEWLINE), U+FF02 (FULLWIDTH QUOTATION MARK), and U+201C (LEFT DOUBLE
 QUOTATION MARK) (to give some examples of what might look promising) are
 therefor not allowed.
 
+If you use perl-5.8.2 or higher, these three attributes are utf8-decoded, to
+increase the likelyhood of success. This way U+00FE will be allowed as a
+quote character.
+
 =item *
 
 A field within CSV must be surrounded by double-quotes to contain an embedded
@@ -1029,7 +1037,7 @@ fetched fields in, C<getline ()> will fail. If you pass more than there are
 fields to return, the remaining references are left untouched.
 
   $csv->bind_columns (\$code, \$name, \$price, \$description);
-  while ($csv->getline ()) {
+  while ($csv->getline ($io)) {
       print "The price of a $name is \x{20ac} $price\n";
       }
 
@@ -1087,7 +1095,11 @@ Set field type to string.
  @columns = $csv->fields ();
 
 This object function returns the input to C<combine ()> or the resultant
-decomposed fields of C<parse ()>, whichever was called more recently.
+decomposed fields of C successfull <parse ()>, whichever was called more
+recently.
+
+Note that the return value is undefined after using C<getline ()>, which
+does not fill the data structures returned by C<parse ()>.
 
 =head2 meta_info
 
@@ -1543,7 +1555,7 @@ completed the documentation, fixed some RT bugs. See ChangeLog releases
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2007-2008 H.Merijn Brand for PROCURA B.V.
+Copyright (C) 2007-2009 H.Merijn Brand for PROCURA B.V.
 Copyright (C) 1998-2001 Jochen Wiedmann. All rights reserved.
 Portions Copyright (C) 1997 Alan Citterman. All rights reserved.
 
