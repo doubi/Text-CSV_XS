@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.60";
+$VERSION = "0.61";
 @ISA     = qw( DynaLoader );
 bootstrap Text::CSV_XS $VERSION;
 
@@ -141,6 +141,7 @@ sub _set_attr_N
 {
     my ($self, $name, $val) = @_;
     $self->{$name} = $val;
+    $self->{_CACHE} or return;
     my @cache = unpack "C*", $self->{_CACHE};
     my $i = $_cache_id{$name};
     $cache[$i++] = $_ for unpack "C*", pack "N", $val;
@@ -944,15 +945,16 @@ invalid argument.
 Similar to combine, but it expects an array ref as input (not an array!)
 and the resulting string is not really created, but immediately written
 to the I<$io> object, typically an IO handle or any other object that
-offers a I<print> method. Note, this implies that the following is wrong:
+offers a I<print> method. Note, this implies that the following is wrong
+in perl 5.005_xx and older:
 
  open FILE, ">", "whatever";
  $status = $csv->print (\*FILE, $colref);
 
-The glob C<\*FILE> is not an object, thus it doesn't have a print
-method. The solution is to use an IO::File object or to hide the
-glob behind an IO::Wrap object. See L<IO::File(3)> and L<IO::Wrap(3)>
-for details.
+as in perl 5.005 and older, the glob C<\*FILE> is not an object, thus it
+doesn't have a print method. The solution is to use an IO::File object or
+to hide the glob behind an IO::Wrap object. See L<IO::File(3)> and
+L<IO::Wrap(3)> for details.
 
 For performance reasons the print method doesn't create a result string.
 In particular the I<$csv-E<gt>string ()>, I<$csv-E<gt>status ()>,

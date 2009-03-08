@@ -249,7 +249,6 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self)
 	    if ((svp = hv_fetchs (self, "eol",     FALSE)) && *svp && SvOK (*svp)) {
 		csv->eol = SvPV (*svp, len);
 		csv->eol_len = len;
-		csv->eol_is_cr = 0;
 		}
 	    }
 	csv->is_bound			=
@@ -306,6 +305,11 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self)
 	if ((svp = hv_fetchs (self, "_types", FALSE)) && *svp && SvOK (*svp)) {
 	    csv->types = SvPV (*svp, len);
 	    csv->types_len = len;
+	    }
+
+	csv->is_bound = 0;
+	if ((svp = hv_fetchs (self, "_is_bound", FALSE)) && *svp && SvOK(*svp)) {
+	    csv->is_bound = SvIV(*svp);
 	    }
 
 	csv->binary			= bool_opt ("binary");
@@ -1161,7 +1165,7 @@ static int cx_xsCombine (pTHX_ HV *hv, AV *av, SV *io, bool useIO)
     SetupCsv (&csv, hv);
     csv.useIO = useIO;
 #if (PERL_BCDVERSION >= 0x5008000)
-    if (*csv.eol)
+    if (csv.eol && *csv.eol)
 	PL_ors_sv = &PL_sv_undef;
 #endif
     result = Combine (&csv, io, av);
