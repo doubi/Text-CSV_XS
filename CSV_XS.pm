@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.61";
+$VERSION = "0.62";
 @ISA     = qw( DynaLoader );
 bootstrap Text::CSV_XS $VERSION;
 
@@ -88,7 +88,7 @@ sub new
     my $class = ref ($proto) || $proto	or return;
     for (keys %{$attr}) {
 	if (m/^[a-z]/ && exists $def_attr{$_}) {
-	    $] >= 5.008002 && m/_char$/ and utf8::decode $attr->{$_};
+	    $] >= 5.008002 && m/_char$/ and utf8::decode ($attr->{$_});
 	    next;
 	    }
 #	croak?
@@ -129,7 +129,7 @@ sub _set_attr_C
 {
     my ($self, $name, $val) = @_;
     defined $val or $val = 0;
-    $] >= 5.008002 and utf8::decode $val;
+    $] >= 5.008002 and utf8::decode ($val);
     $self->{$name} = $val;
     $self->{_CACHE} or return;
     my @cache = unpack "C*", $self->{_CACHE};
@@ -1277,10 +1277,33 @@ Reading a CSV file line by line:
   close $fh or die "file.csv: $!";
 
 For more extended examples, see the C<examples/> subdirectory in the
-original distribution. Included is C<examples/parser-xs.pl>, that could
-be used to `fix' bad CSV and parse beyond errors.
+original distribution. The following files can be found there:
 
-  perl examples/parser-xs.pl bad.csv >good.csv
+=over 2
+
+=item parser-xs.pl
+
+This can be used as a boilerplate to `fix' bad CSV and parse beyond errors.
+
+  $ perl examples/parser-xs.pl bad.csv >good.csv
+
+=item csv-check
+
+This is a command-line tool that uses parser-xs.pl techniques to check the
+CSV file and report on its content.
+
+  $ csv-check files/utf8.csv
+  Checked with examples/csv-check 1.2 using Text::CSV_XS 0.61
+  OK: rows: 1, columns: 2
+      sep = <,>, quo = <">, bin = <1>
+
+=item csv2xls
+
+A script to convert CSV to Microsoft Excel. This requires L<Date::Calc(3)>
+and L<Spreadsheet::WriteExcel(3)>. The converter acceps various options and
+can produce UTF-8 Excel files.
+
+=back
 
 =head1 CAVEATS
 
@@ -1302,13 +1325,6 @@ setting in it, so checking the locale is no solution.
 =head1 TODO
 
 =over 2
-
-=item More tests
-
-For all possible errors, there should be a test.
-
-All XS code should be covered in the test cases, except for perl
-internal failure, like failing to store a hash value.
 
 =item More Errors & Warnings
 
@@ -1335,11 +1351,6 @@ Requests for adding means (methods) that combine C<combine ()> and
 C<string ()> in a single call will B<not> be honored. Likewise for
 C<parse ()> and C<fields ()>. Given the trouble with embedded newlines,
 Using C<getline ()> and C<print ()> instead is the prefered way to go.
-
-=item Unicode
-
-We probably need many more tests to check if all edge-cases are covered.
-See t/50_utf8.t.
 
 =item Parse the whole file at once
 
@@ -1396,6 +1407,9 @@ If an error occured, C<$csv->error_diag ()> can be used to get more information
 on the cause of the failure. Note that for speed reasons, the internal value
 is never cleared on success, so using the value returned by C<error_diag ()> in
 normal cases - when no error occured - may cause unexpected results.
+
+If the constructor failed, the cause can be found using C<error_diag ()> as a
+class method, like C<Text::CSV_XS->error_diag ()>.
 
 Currently errors as described below are available. I've tried to make the error
 itself explanatory enough, but more descriptions will be added. For most of
@@ -1534,7 +1548,7 @@ exhausted before the quote is found, that field is not terminated.
 =head1 SEE ALSO
 
 L<perl(1)>, L<IO::File(3)>, L<IO::Handle(3)>, L<IO::Wrap(3)>,
-L<Text::CSV(3)>, L<Text::CSV_PP(3)>, L<Text::CSV::Encoded>,
+L<Text::CSV(3)>, L<Text::CSV_PP(3)>, L<Text::CSV::Encoded(3)>,
 L<Text::CSV::Separator(3)>, and L<Spreadsheet::Read(3)>.
 
 =head1 AUTHORS and MAINTAINERS
@@ -1552,8 +1566,8 @@ and the print and getline methods. See ChangeLog releases 0.10 through
 
 H.Merijn Brand F<E<lt>h.m.brand@xs4all.nlE<gt>> cleaned up the code,
 added the field flags methods, wrote the major part of the test suite,
-completed the documentation, fixed some RT bugs. See ChangeLog releases
-0.25 and on.
+completed the documentation, fixed some RT bugs and added all the allow
+flags. See ChangeLog releases 0.25 and on.
 
 =head1 COPYRIGHT AND LICENSE
 
