@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.62";
+$VERSION = "0.63";
 @ISA     = qw( DynaLoader );
 bootstrap Text::CSV_XS $VERSION;
 
@@ -95,8 +95,16 @@ sub new
 	$last_new_err = "Unknown attribute '$_'";
 	return;
 	}
-    $last_new_err = SetDiag (undef, 0);
+
     my $self  = {%def_attr, %{$attr}};
+    if ($self->{allow_whitespace} and
+	    (defined $self->{quote_char}  && $self->{quote_char}  =~ m/^[ \t]$/) ||
+	    (defined $self->{escape_char} && $self->{escape_char} =~ m/^[ \t]$/)) {
+	$last_new_err = SetDiag (undef, 1002);
+	return;
+	}
+
+    $last_new_err = SetDiag (undef, 0);
     defined $\ && !exists $attr->{eol} and $self->{eol} = $\;
     bless $self, $class;
     defined $self->{types} and $self->types ($self->{types});
@@ -153,14 +161,24 @@ sub _set_attr_N
 sub quote_char
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("quote_char", shift);
+    if (@_) {
+	my $qc = shift;
+	defined $qc && $qc =~ m/^[ \t]$/ && $self->{allow_whitespace} and
+	    croak ($self->SetDiag (1002));
+	$self->_set_attr_C ("quote_char", $qc);
+	}
     $self->{quote_char};
     } # quote_char
 
 sub escape_char
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("escape_char", shift);
+    if (@_) {
+	my $ec = shift;
+	defined $ec && $ec =~ m/^[ \t]$/ && $self->{allow_whitespace} and
+	    croak ($self->SetDiag (1002));
+	$self->_set_attr_C ("escape_char", $ec);
+	}
     $self->{escape_char};
     } # escape_char
 
@@ -232,7 +250,14 @@ sub allow_loose_escapes
 sub allow_whitespace
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("allow_whitespace", shift);
+    if (@_) {
+	my $aw = shift;
+	$aw and
+	  (defined $self->{quote_char}  && $self->{quote_char}  =~ m/^[ \t]$/) ||
+	  (defined $self->{escape_char} && $self->{escape_char} =~ m/^[ \t]$/) and
+	    croak ($self->SetDiag (1002));
+	$self->_set_attr_C ("allow_whitespace", $aw);
+	}
     $self->{allow_whitespace};
     } # allow_whitespace
 
@@ -713,12 +738,16 @@ See also CAVEATS
 =item allow_whitespace
 
 When this option is set to true, whitespace (TAB's and SPACE's)
-surrounding the separation character is removed when parsing. So
-lines like:
+surrounding the separation character is removed when parsing. If
+either TAB or SPACE is one of the three major characters C<sep_char>,
+C<quote_char>, or C<escape_char> it will not be considered whitespace.
+
+So lines like:
 
   1 , "foo" , bar , 3 , zapp
 
 are now correctly parsed, even though it violates the CSV specs.
+
 Note that B<all> whitespace is stripped from start and end of each
 field. That would make is more a I<feature> than a way to be able
 to parse bad CSV lines, as
@@ -1453,6 +1482,11 @@ HashRef parse related error.
 
 The separation character cannot be equal to either the quotation character
 or the escape character, as that will invalidate all parsing rules.
+
+=item 1002 "INI - allow_whitespace with escape_char or quote_char SP or TAB"
+
+Using C<allow_whitespace> when either C<escape_char> or C<quote_char> is
+equal to SPACE or TAB is too ambiguous to allow.
 
 =item 2010 "ECR - QUO char inside quotes followed by CR not part of EOL"
 
