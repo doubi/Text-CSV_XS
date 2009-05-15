@@ -210,9 +210,8 @@ static SV *cx_SetDiag (pTHX_ csv_t *csv, int xse)
 {
     SV   *err = SvDiag (xse);
 
-    if (err) {
+    if (err)
 	hv_store (csv->self, "_ERROR_DIAG",  11, err,           0);
-	}
     if (xse == 0) {
 	hv_store (csv->self, "_ERROR_POS",   10, newSViv  (0),  0);
 	hv_store (csv->self, "_ERROR_INPUT", 12, newSVpvs (""), 0);
@@ -1196,7 +1195,7 @@ BOOT:
     m_print   = newSVpvs ("print");
 
 void
-SetDiag (self, xse)
+SetDiag (self, xse, ...)
     SV		*self
     int		 xse
 
@@ -1211,6 +1210,13 @@ SetDiag (self, xse)
 	}
     else
 	ST (0) = SvDiag (xse);
+
+    if (xse && items > 1 && SvPOK (ST (2))) {
+	STRLEN len;
+	sv_setpvn (ST (0),  SvPVX (ST (2)), SvCUR (ST (2)));
+	SvIOK_on  (ST (0));
+	}
+
     XSRETURN (1);
     /* XS SetDiag */
 
