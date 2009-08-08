@@ -30,7 +30,7 @@ use DynaLoader ();
 use Carp;
 
 use vars   qw( $VERSION @ISA );
-$VERSION = "0.65";
+$VERSION = "0.67";
 @ISA     = qw( DynaLoader );
 bootstrap Text::CSV_XS $VERSION;
 
@@ -65,7 +65,9 @@ my %def_attr = (
     allow_loose_escapes	=> 0,
     allow_whitespace	=> 0,
     blank_is_undef	=> 0,
+    empty_is_undef	=> 0,
     verbatim		=> 0,
+    auto_diag		=> 0,
     types		=> undef,
 
     _EOF		=> 0,
@@ -85,8 +87,10 @@ sub new
 	"usage: my \$csv = Text::CSV_XS->new ([{ option => value, ... }]);");
 
     my $proto = shift;
+    my $class = ref ($proto) || $proto	or  return;
+    @_ > 0 &&   ref $_[0] ne "HASH"	and return;
     my $attr  = shift || {};
-    my $class = ref ($proto) || $proto	or return;
+
     for (keys %{$attr}) {
 	if (m/^[a-z]/ && exists $def_attr{$_}) {
 	    $] >= 5.008002 && m/_char$/ and utf8::decode ($attr->{$_});
@@ -130,10 +134,13 @@ my %_cache_id = (	# Keep in sync with XS!
     eol_is_cr		=> 20,
     has_types		=> 21,
     verbatim		=> 22,
+    empty_is_undef	=> 23,
+    auto_diag		=> 24,
 
-    _is_bound		=> 23,	# 23 .. 26
+    _is_bound		=> 25,	# 25 .. 28
     );
 
+# A `character'
 sub _set_attr_C
 {
     my ($self, $name, $val) = @_;
@@ -146,6 +153,19 @@ sub _set_attr_C
     $self->{_CACHE} = pack "C*", @cache;
     } # _set_attr_C
 
+# A flag
+sub _set_attr_X
+{
+    my ($self, $name, $val) = @_;
+    defined $val or $val = 0;
+    $self->{$name} = $val;
+    $self->{_CACHE} or return;
+    my @cache = unpack "C*", $self->{_CACHE};
+    $cache[$_cache_id{$name}] = 0 + $val;
+    $self->{_CACHE} = pack "C*", @cache;
+    } # _set_attr_C
+
+# A number
 sub _set_attr_N
 {
     my ($self, $name, $val) = @_;
@@ -216,35 +236,35 @@ sub eol
 sub always_quote
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("always_quote", shift);
+    @_ and $self->_set_attr_X ("always_quote", shift);
     $self->{always_quote};
     } # always_quote
 
 sub binary
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("binary", shift);
+    @_ and $self->_set_attr_X ("binary", shift);
     $self->{binary};
     } # binary
 
 sub keep_meta_info
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("keep_meta_info", shift);
+    @_ and $self->_set_attr_X ("keep_meta_info", shift);
     $self->{keep_meta_info};
     } # keep_meta_info
 
 sub allow_loose_quotes
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("allow_loose_quotes", shift);
+    @_ and $self->_set_attr_X ("allow_loose_quotes", shift);
     $self->{allow_loose_quotes};
     } # allow_loose_quotes
 
 sub allow_loose_escapes
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("allow_loose_escapes", shift);
+    @_ and $self->_set_attr_X ("allow_loose_escapes", shift);
     $self->{allow_loose_escapes};
     } # allow_loose_escapes
 
@@ -257,7 +277,7 @@ sub allow_whitespace
 	  (defined $self->{quote_char}  && $self->{quote_char}  =~ m/^[ \t]$/) ||
 	  (defined $self->{escape_char} && $self->{escape_char} =~ m/^[ \t]$/) and
 	    croak ($self->SetDiag (1002));
-	$self->_set_attr_C ("allow_whitespace", $aw);
+	$self->_set_attr_X ("allow_whitespace", $aw);
 	}
     $self->{allow_whitespace};
     } # allow_whitespace
@@ -265,9 +285,16 @@ sub allow_whitespace
 sub blank_is_undef
 {
     my $self = shift;
-    @_ and $self->_set_attr_C ("blank_is_undef", shift);
+    @_ and $self->_set_attr_X ("blank_is_undef", shift);
     $self->{blank_is_undef};
     } # blank_is_undef
+
+sub empty_is_undef
+{
+    my $self = shift;
+    @_ and $self->_set_attr_X ("empty_is_undef", shift);
+    $self->{empty_is_undef};
+    } # empty_is_undef
 
 sub verbatim
 {
@@ -275,6 +302,13 @@ sub verbatim
     @_ and $self->_set_attr_C ("verbatim", shift);
     $self->{verbatim};
     } # verbatim
+
+sub auto_diag
+{
+    my $self = shift;
+    @_ and $self->_set_attr_X ("auto_diag", shift);
+    $self->{auto_diag};
+    } # auto_diag
 
 # status
 #
@@ -322,7 +356,10 @@ sub error_diag
 
     my $context = wantarray;
     unless (defined $context) {	# Void context
-	$diag[0] and print STDERR "# CSV_XS ERROR: $diag[0] - $diag[1]\n";
+	if ($diag[0]) {
+	    my $msg = "# CSV_XS ERROR: $diag[0] - $diag[1]\n";
+	    $self && ref $self && $self->{auto_diag} > 1 ? die $msg : warn $msg;
+	    }
 	return;
 	}
     return $context ? @diag : $diag[1];
@@ -590,8 +627,8 @@ or, more safely in perl 5.6 and up
 =head2 Unicode (UTF8)
 
 On parsing (both for C<getline ()> and C<parse ()>), if the source is
-marked being UTF8, then parsing that source will mark all fields that
-are marked binary will also be marked UTF8.
+marked being UTF8, then all fields that are marked binary will also be
+be marked UTF8.
 
 On combining (C<print ()> and C<combine ()>), if any of the combining
 fields was marked UTF8, the resulting string will be marked UTF8.
@@ -681,7 +718,7 @@ QUOTATION MARK) (to give some examples of what might look promising) are
 therefor not allowed.
 
 If you use perl-5.8.2 or higher, these three attributes are utf8-decoded, to
-increase the likelyhood of success. This way U+00FE will be allowed as a
+increase the likelihood of success. This way U+00FE will be allowed as a
 quote character.
 
 =item *
@@ -779,6 +816,20 @@ will cause unquoted empty fields to be set to undef, causing the above to
 be parsed as
 
  ("1", "", undef, " ", "2")
+
+=item empty_is_undef
+
+Going one step further than C<blank_is_undef>, this attribute converts
+all empty fields to undef, so
+
+ 1,"",," ",2
+
+is read as
+
+ (1, undef, undef, " ", 2)
+
+Note that this only effects fields that are I<realy> empty, not fields
+that are empty after stripping allowed whitespace. YMMV.
 
 =item quote_char
 
@@ -912,6 +963,18 @@ as if \n is just nothing more than a binary character.
 For parse () this means that the parser has no idea about line ending
 anymore, and getline () chomps line endings on reading.
 
+=item auto_diag
+
+Set to true will cause C<error_diag ()> to be automatically be called
+in void context upon errors.
+
+If set to a value greater than 1, it will die on errors instead of
+warn.
+
+Future extensions to this feature will include auto-detection of the
+C<autodie> module being enabled, which will raise the value of C<auto_diag>
+with C<1> on the moment the error is detected.
+
 =back
 
 To sum it up,
@@ -932,7 +995,9 @@ is equivalent to
      allow_loose_escapes => 0,
      allow_whitespace    => 0,
      blank_is_undef      => 0,
+     empty_is_undef      => 0,
      verbatim            => 0,
+     auto_diag           => 0,
      });
 
 For all of the above mentioned flags, there is an accessor method
@@ -982,8 +1047,8 @@ in perl 5.005_xx and older:
 
 as in perl 5.005 and older, the glob C<\*FILE> is not an object, thus it
 doesn't have a print method. The solution is to use an IO::File object or
-to hide the glob behind an IO::Wrap object. See L<IO::File(3)> and
-L<IO::Wrap(3)> for details.
+to hide the glob behind an IO::Wrap object. See L<IO::File> and L<IO::Wrap>
+for details.
 
 For performance reasons the print method doesn't create a result string.
 In particular the I<$csv-E<gt>string ()>, I<$csv-E<gt>status ()>,
@@ -1056,7 +1121,7 @@ string C<"\cAUNDEF\cA">, so
   $hr = $csv->getline_hr ($io);
 
 Will set C<$hr->{"\cAUNDEF\cA"}> to the 1st field, C<$hr->{""}> to the
-2nd field, and C<$hr->{name}> to the 4th field, discarding the 2rd field.
+2nd field, and C<$hr->{name}> to the 4th field, discarding the 3rd field.
 
 C<column_names ()> croaks on invalid arguments.
 
@@ -1126,7 +1191,7 @@ Set field type to string.
  @columns = $csv->fields ();
 
 This object function returns the input to C<combine ()> or the resultant
-decomposed fields of C successfull <parse ()>, whichever was called more
+decomposed fields of C successful <parse ()>, whichever was called more
 recently.
 
 Note that the return value is undefined after using C<getline ()>, which
@@ -1244,7 +1309,17 @@ as the API may change in future releases.
 
 =head1 EXAMPLES
 
-An example for parsing CSV strings:
+Reading a CSV file line by line:
+
+  my $csv = Text::CSV_XS->new ({ binary => 1 });
+  open my $fh, "<", "file.csv" or die "file.csv: $!";
+  while (my $row = $csv->getline ($fh)) {
+      # do something with @$row
+      }
+  $csv->eof or $csv->error_diag;
+  close $fh or die "file.csv: $!";
+
+Parsing CSV strings:
 
   my $csv = Text::CSV_XS->new ({ keep_meta_info => 1, binary => 1 });
 
@@ -1258,12 +1333,25 @@ An example for parsing CSV strings:
           }
       }
   else {
-      my $err = $csv->error_input;
-      print STDERR "parse () failed on argument: ", $err, "\n";
+      print STDERR "parse () failed on argument: ",
+	  $csv->error_input, "\n";
       $csv->error_diag ();
       }
 
-An example for creating CSV files:
+An example for creating CSV files using the C<print ()> method, like in
+dumping the content of a database ($dbh) table ($tbl) to CSV:
+
+  my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
+  open my $fh, ">", "$tbl.csv" or die "$tbl.csv: $!";
+  my $sth = $dbh->prepare ("select * from $tbl");
+  $sth->execute;
+  $csv->print ($fh, $sth->{NAME_lc});
+  while (my $row = $sth->fetch) {
+      $csv->print ($fh, $row) or $csv->error_diag;
+      }
+  close $fh or die "$tbl.csv: $!";
+
+or using the slower C<combine ()> and C<string ()> methods:
 
   my $csv = Text::CSV_XS->new;
 
@@ -1273,37 +1361,13 @@ An example for creating CSV files:
       'You said, "Hello!"',   5.67,
       '"Surely"',   '',   '3.14159');
   if ($csv->combine (@sample_input_fields)) {
-      my $string = $csv->string;
-      print $csv_fh "$string\n";
+      print $csv_fh $csv->string, "\n";
       }
   else {
-      my $err = $csv->error_input;
-      print "combine () failed on argument: ", $err, "\n";
+      print "combine () failed on argument: ",
+	  $csv->error_input, "\n";
       }
   close $csv_fh or die "hello.csv: $!";
-
-Or using the C<print ()> method, which is faster like in
-dumping the content of a database ($dbh) table ($tbl) to CSV:
-
-  my $csv = Text::CSV_XS->new ({ binary => 1, eol => $/ });
-  open my $fh, ">", "$tbl.csv" or die "$tbl.csv: $!";
-  my $sth = $dbh->prepare ("select * from $tbl");
-  $sth->execute;
-  $csv->print ($fh, $sth->{NAME_lc});
-  while (my $row = $sth->fetch) {
-      $csv->print ($fh, $row) or ...;
-      }
-  close $fh or die "$tbl.csv: $!";
-
-Reading a CSV file line by line:
-
-  my $csv = Text::CSV_XS->new ({ binary => 1 });
-  open my $fh, "<", "file.csv" or die "file.csv: $!";
-  while (my $row = $csv->getline ($fh)) {
-      # do something with @$row
-      }
-  $csv->eof or $csv->error_diag;
-  close $fh or die "file.csv: $!";
 
 For more extended examples, see the C<examples/> subdirectory in the
 original distribution. The following files can be found there:
@@ -1328,8 +1392,8 @@ CSV file and report on its content.
 
 =item csv2xls
 
-A script to convert CSV to Microsoft Excel. This requires L<Date::Calc(3)>
-and L<Spreadsheet::WriteExcel(3)>. The converter acceps various options and
+A script to convert CSV to Microsoft Excel. This requires L<Date::Calc>
+and L<Spreadsheet::WriteExcel>. The converter accepts various options and
 can produce UTF-8 Excel files.
 
 =back
@@ -1439,6 +1503,11 @@ normal cases - when no error occured - may cause unexpected results.
 
 If the constructor failed, the cause can be found using C<error_diag ()> as a
 class method, like C<Text::CSV_XS->error_diag ()>.
+
+C<$csv->error_diag ()> is automatically called upon error when the contractor
+was called with C<auto_diag> set to 1 or 2, or when C<autodie> is in effect
+(NYI).  When set to 1, this will cause a C<warn ()> with the error message,
+when set to 2, it will C<die ()>.
 
 Currently errors as described below are available. I've tried to make the error
 itself explanatory enough, but more descriptions will be added. For most of
@@ -1581,9 +1650,9 @@ exhausted before the quote is found, that field is not terminated.
 
 =head1 SEE ALSO
 
-L<perl(1)>, L<IO::File(3)>, L<IO::Handle(3)>, L<IO::Wrap(3)>,
-L<Text::CSV(3)>, L<Text::CSV_PP(3)>, L<Text::CSV::Encoded(3)>,
-L<Text::CSV::Separator(3)>, and L<Spreadsheet::Read(3)>.
+L<perl>, L<IO::File>, L<IO::Handle>, L<IO::Wrap>, L<Text::CSV>,
+L<Text::CSV_PP>, L<Text::CSV::Encoded>, L<Text::CSV::Separator>,
+and L<Spreadsheet::Read>.
 
 =head1 AUTHORS and MAINTAINERS
 

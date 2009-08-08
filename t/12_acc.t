@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;	# use warnings core since 5.6
 
-use Test::More tests => 66;
+use Test::More tests => 86;
 
 BEGIN {
     use_ok "Text::CSV_XS";
@@ -24,6 +24,8 @@ is ($csv->allow_loose_quotes,		0,		"allow_loose_quotes");
 is ($csv->allow_loose_escapes,		0,		"allow_loose_escapes");
 is ($csv->allow_whitespace,		0,		"allow_whitespace");
 is ($csv->blank_is_undef,		0,		"blank_is_undef");
+is ($csv->empty_is_undef,		0,		"empty_is_undef");
+is ($csv->auto_diag,			0,		"auto_diag");
 is ($csv->verbatim,			0,		"verbatim");
 
 is ($csv->binary (1),			1,		"binary (1)");
@@ -44,6 +46,8 @@ is ($csv->allow_loose_quotes (1),	1,		"allow_loose_quotes (1)");
 is ($csv->allow_loose_escapes (1),	1,		"allow_loose_escapes (1)");
 is ($csv->allow_whitespace (1),		1,		"allow_whitespace (1)");
 is ($csv->blank_is_undef (1),		1,		"blank_is_undef (1)");
+is ($csv->empty_is_undef (1),		1,		"empty_is_undef (1)");
+is ($csv->auto_diag (1),		1,		"auto_diag (1)");
 is ($csv->verbatim (1),			1,		"verbatim (1)");
 is ($csv->escape_char ("\\"),		"\\",		"escape_char (\\)");
 ok ($csv->combine (@fld),				"combine");
@@ -100,5 +104,10 @@ is (Text::CSV_XS->new ({ oel     => "" }), undef,	"typo in attr");
 is (Text::CSV_XS::error_diag (), "INI - Unknown attribute 'oel'",	"Unsupported attr");
 is (Text::CSV_XS->new ({ _STATUS => "" }), undef,	"private attr");
 is (Text::CSV_XS::error_diag (), "INI - Unknown attribute '_STATUS'",	"Unsupported private attr");
+
+foreach my $arg (undef, 0, "", " ", 1, [], [ 0 ], *STDOUT) {
+    is  (Text::CSV_XS->new ($arg),         undef,	"Illegal type for first arg");
+    is ((Text::CSV_XS::error_diag)[0], 1000, "Should be a hashref - numeric error");
+    }
 
 1;
