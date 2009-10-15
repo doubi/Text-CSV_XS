@@ -3,7 +3,7 @@
 use strict;
 $^W = 1;
 
-use Test::More tests => 262;
+use Test::More tests => 278;
 
 BEGIN {
     require_ok "Text::CSV_XS";
@@ -14,6 +14,8 @@ BEGIN {
 $| = 1;
 
 # Embedded newline tests
+
+my $def_rs = $/;
 
 foreach my $rs ("\n", "\r\n", "\r") {
     for $\ (undef, $rs) {
@@ -55,7 +57,7 @@ foreach my $rs ("\n", "\r\n", "\r") {
 		    }
 		else {
 		    ok (my $row = $csv->getline (*FH),	"getline |$s_eol|");
-		    is (ref $row, "ARRAY",			"row     |$s_eol|");
+		    is (ref $row, "ARRAY",		"row     |$s_eol|");
 		    @p = @$row;
 		    }
 
@@ -69,6 +71,7 @@ foreach my $rs ("\n", "\r\n", "\r") {
 	unlink "_eol.csv";
 	}
     }
+$/ = $def_rs;
 
 {   my $csv = Text::CSV_XS->new ({ escape_char => undef });
 
@@ -106,6 +109,26 @@ SKIP: {
 	unlink "_eol.csv";
 	}
     }
+$/ = $def_rs;
+
+ok (1, "Auto-detecting \\r");
+{   my @row = qw( a b c ); local $" = ",";
+    for (["\n", "\\n"], ["\r\n", "\\r\\n"], ["\r", "\\r"]) {
+	my ($eol, $s_eol) = @$_;
+	open  FH, ">_eol.csv";
+	print FH qq{@row$eol@row$eol@row$eol\x91};
+	close FH;
+	open  FH, "<_eol.csv";
+	my $c = Text::CSV_XS->new ({ binary => 1, auto_diag => 1 });
+	is ($c->eol (),			"",		"default EOL");
+	is_deeply ($c->getline (*FH),	[ @row ],	"EOL 1 $s_eol");
+	is ($c->eol (),	$eol eq "\r" ? "\r" : "",	"EOL");
+	is_deeply ($c->getline (*FH),	[ @row ],	"EOL 2 $s_eol");
+	is_deeply ($c->getline (*FH),	[ @row ],	"EOL 3 $s_eol");
+	close FH;
+	unlink "_eol.csv";
+	}
+    }
 
 ok (1, "Specific \\r test from tfrayner");
 {   $/ = "\r";
@@ -126,6 +149,7 @@ ok (1, "Specific \\r test from tfrayner");
     close FH;
     unlink "_eol.csv";
     }
+$/ = $def_rs;
 
 ok (1, "EOL undef");
 {   $/ = "\r";
@@ -142,5 +166,6 @@ ok (1, "EOL undef");
     close FH;
     unlink "_eol.csv";
     }
+$/ = $def_rs;
 
 1;

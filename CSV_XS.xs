@@ -9,9 +9,12 @@
 #include <XSUB.h>
 #define NEED_PL_parser
 #define DPPP_PL_parser_NO_DUMMY
-#define NEED_sv_2pv_flags
 #define NEED_load_module
+#define NEED_my_snprintf
 #define NEED_newRV_noinc
+#define NEED_pv_escape
+#define	NEED_pv_pretty
+#define NEED_sv_2pv_flags
 #define NEED_vload_module
 #include "ppport.h"
 #if (PERL_BCDVERSION <= 0x5005005)
@@ -49,6 +52,7 @@
 #define CACHE_ID_empty_is_undef		23
 #define CACHE_ID_auto_diag		24
 #define CACHE_ID__is_bound		25
+#define CACHE_ID__has_ahead		29
 
 #define CSV_FLAGS_QUO	0x0001
 #define CSV_FLAGS_BIN	0x0002
@@ -95,15 +99,16 @@ typedef struct {
     byte	empty_is_undef;
     byte	verbatim;
     byte	auto_diag;
+
     long	is_bound;
 
-    byte	cache[CACHE_SIZE];
+    byte *	cache;
 
     SV *	pself;
     HV *	self;
     SV *	bound;
 
-    char *	eol;
+    byte *	eol;
     STRLEN	eol_len;
     char *	types;
     STRLEN	types_len;
@@ -111,6 +116,7 @@ typedef struct {
     char *	bptr;
     SV *	tmp;
     int		utf8;
+    byte	has_ahead;
     STRLEN	size;
     STRLEN	used;
     char	buffer[BUFFER_SIZE];
@@ -232,6 +238,142 @@ static SV *cx_SetDiag (pTHX_ csv_t *csv, int xse)
     return (err);
     } /* SetDiag */
 
+#define xs_cache_set(hv,idx,val)	cx_xs_cache_set (aTHX_ hv, idx, val)
+static void cx_xs_cache_set (pTHX_ HV *hv, int idx, SV *val)
+{
+    SV **svp;
+    byte *cp;
+
+    unless ((svp = hv_fetchs (hv, "_CACHE", FALSE)) && *svp)
+	return;
+
+    cp = (byte *)SvPV_nolen (*svp);
+
+    /* single char/byte */
+    if ( idx == CACHE_ID_quote_char	||
+	 idx == CACHE_ID_escape_char	||
+	 idx == CACHE_ID_sep_char) {
+	cp[idx] = SvPOK (val) ? *(SvPVX (val)) : 0;
+	return;
+	}
+
+    /* boolean/numeric */
+    if ( idx == CACHE_ID_binary			||
+         idx == CACHE_ID_keep_meta_info		||
+         idx == CACHE_ID_always_quote		||
+         idx == CACHE_ID_allow_loose_quotes	||
+         idx == CACHE_ID_allow_loose_escapes	||
+         idx == CACHE_ID_allow_double_quoted	||
+         idx == CACHE_ID_allow_whitespace	||
+         idx == CACHE_ID_blank_is_undef		||
+	 idx == CACHE_ID_empty_is_undef		||
+	 idx == CACHE_ID_verbatim		||
+	 idx == CACHE_ID_auto_diag) {
+	cp[idx] = SvIV (val);
+	return;
+	}
+
+    /* a 4-byte IV */
+    if (idx == CACHE_ID__is_bound) {
+	long v = SvIV (val);
+
+	cp[idx    ] = (v & 0xFF000000) >> 24;
+	cp[idx + 1] = (v & 0x00FF0000) >> 16;
+	cp[idx + 2] = (v & 0x0000FF00) >>  8;
+	cp[idx + 3] = (v & 0x000000FF);
+	return;
+	}
+
+    if (idx == CACHE_ID_eol) {
+	STRLEN len = 0;
+	char  *eol = SvPOK (val) ? SvPV (val, len) : "";
+
+	memset (cp + CACHE_ID_eol, 0, 8);
+	cp[CACHE_ID_eol_len]   = len;
+	cp[CACHE_ID_eol_is_cr] = len == 1 && *eol == CH_CR ? 1 : 0;
+	if (len > 0 && len < 8)
+	    memcpy (cp + CACHE_ID_eol, eol, len);
+	}
+    } /* cache_set */
+
+#define _pretty_str(csv,xse)	cx_pretty_str (aTHX_ csv, xse)
+static char *cx_pretty_str (pTHX_ byte *s, STRLEN l)
+{
+    SV *dsv = newSVpvs ("");
+    return (pv_pretty (dsv, (char *)s, l, 0, NULL, NULL,
+	    (PERL_PV_PRETTY_DUMP | PERL_PV_ESCAPE_UNI_DETECT)));
+    } /* _pretty_str */
+
+#define _cache_show_byte(trim,idx) \
+    c = cp[idx]; (void)fprintf (stderr, "  %-20s %02x:%3d\n", trim, c, c)
+#define _cache_show_char(trim,idx) \
+    c = cp[idx]; (void)fprintf (stderr, "  %-20s %02x:%s\n",  trim, c, _pretty_str (&c, 1))
+#define _cache_show_str(trim,l,s) \
+    (void)fprintf (stderr, "  %-20s %02d:%s\n",  trim, l, _pretty_str (s, l))
+#define _cache_show_cstr(trim,l,idx) _cache_show_str (trim, l, cp + idx)
+
+#define xs_cache_diag(hv)	cx_xs_cache_diag (aTHX_ hv)
+static void cx_xs_cache_diag (pTHX_ HV *hv)
+{
+    SV **svp;
+    byte *cp, c;
+
+    unless ((svp = hv_fetchs (hv, "_CACHE", FALSE)) && *svp) {
+	(void)fprintf (stderr, "CACHE: invalid\n");
+	return;
+	}
+
+    cp = (byte *)SvPV_nolen (*svp);
+    (void)fprintf (stderr, "CACHE:\n");
+    _cache_show_char ("quote",			CACHE_ID_quote_char);
+    _cache_show_char ("escape",			CACHE_ID_escape_char);
+    _cache_show_char ("sep",			CACHE_ID_sep_char);
+    _cache_show_byte ("binary",			CACHE_ID_binary);
+
+    _cache_show_byte ("allow_double_quoted",	CACHE_ID_allow_double_quoted);
+    _cache_show_byte ("allow_loose_escapes",	CACHE_ID_allow_loose_escapes);
+    _cache_show_byte ("allow_loose_quotes",	CACHE_ID_allow_loose_quotes);
+    _cache_show_byte ("allow_whitespace",	CACHE_ID_allow_whitespace);
+    _cache_show_byte ("always_quote",		CACHE_ID_always_quote);
+    _cache_show_byte ("auto_diag",		CACHE_ID_auto_diag);
+    _cache_show_byte ("blank_is_undef",		CACHE_ID_blank_is_undef);
+    _cache_show_byte ("empty_is_undef",		CACHE_ID_empty_is_undef);
+    _cache_show_byte ("has_ahead",		CACHE_ID__has_ahead);
+    _cache_show_byte ("has_types",		CACHE_ID_has_types);
+    _cache_show_byte ("keep_meta_info",		CACHE_ID_keep_meta_info);
+    _cache_show_byte ("verbatim",		CACHE_ID_verbatim);
+
+    _cache_show_byte ("eol_is_cr",		CACHE_ID_eol_is_cr);
+    _cache_show_byte ("eol_len",		CACHE_ID_eol_len);
+    if (c < 8)
+	_cache_show_cstr ("eol", c,		CACHE_ID_eol);
+    else if ((svp = hv_fetchs (hv, "eol", FALSE)) && *svp && SvOK (*svp)) {
+	STRLEN len;
+	byte *eol = (byte *)SvPV (*svp, len);
+	_cache_show_str  ("eol", len,		eol);
+	}
+    else
+	_cache_show_str  ("eol", 8,		(byte *)"<broken>");
+
+    /* csv->is_bound			=
+	    (csv->cache[CACHE_ID__is_bound    ] << 24) |
+	    (csv->cache[CACHE_ID__is_bound + 1] << 16) |
+	    (csv->cache[CACHE_ID__is_bound + 2] <<  8) |
+	    (csv->cache[CACHE_ID__is_bound + 3]);
+    */
+    } /* xs_cache_diag */
+
+#define set_eol_is_cr(csv)	cx_set_eol_is_cr (aTHX_ csv)
+static void cx_set_eol_is_cr (pTHX_ csv_t *csv)
+{
+		      csv->cache[CACHE_ID_eol    ]   = CH_CR;
+		      csv->cache[CACHE_ID_eol + 1]   = 0;
+    csv->eol_is_cr =  csv->cache[CACHE_ID_eol_is_cr] = 1;
+    csv->eol_len   =  csv->cache[CACHE_ID_eol_len]   = 1;
+    csv->eol       = &csv->cache[CACHE_ID_eol];
+    (void)hv_store (csv->self, "eol",  3, newSVpvn ((char *)csv->eol, 1), 0);
+    } /* set_eol_is_cr */
+
 #define SetupCsv(csv,self,pself)	cx_SetupCsv (aTHX_ csv, self, pself)
 static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 {
@@ -243,7 +385,7 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
     csv->pself = pself;
 
     if ((svp = hv_fetchs (self, "_CACHE", FALSE)) && *svp) {
-	memcpy (csv->cache, SvPV (*svp, len), CACHE_SIZE);
+	csv->cache = (byte *)SvPVX (*svp);
 
 	csv->quote_char			= csv->cache[CACHE_ID_quote_char	];
 	csv->escape_char		= csv->cache[CACHE_ID_escape_char	];
@@ -261,17 +403,18 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	csv->blank_is_undef		= csv->cache[CACHE_ID_blank_is_undef	];
 	csv->empty_is_undef		= csv->cache[CACHE_ID_empty_is_undef	];
 	csv->verbatim			= csv->cache[CACHE_ID_verbatim		];
+	csv->has_ahead			= csv->cache[CACHE_ID__has_ahead	];
 	csv->eol_is_cr			= csv->cache[CACHE_ID_eol_is_cr		];
 	csv->eol_len			= csv->cache[CACHE_ID_eol_len		];
 	if (csv->eol_len < 8)
-	    csv->eol = (char *)&csv->cache[CACHE_ID_eol];
+	    csv->eol = &csv->cache[CACHE_ID_eol];
 	else {
 	    /* Was too long to cache. must re-fetch */
 	    csv->eol       = NULL;
 	    csv->eol_is_cr = 0;
 	    csv->eol_len   = 0;
 	    if ((svp = hv_fetchs (self, "eol",     FALSE)) && *svp && SvOK (*svp)) {
-		csv->eol = SvPV (*svp, len);
+		csv->eol = (byte *)SvPV (*svp, len);
 		csv->eol_len = len;
 		}
 	    }
@@ -290,6 +433,8 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	    }
 	}
     else {
+	SV *sv_cache;
+
 	csv->quote_char = '"';
 	if ((svp = hv_fetchs (self, "quote_char",  FALSE)) && *svp) {
 	    if (SvOK (*svp)) {
@@ -316,11 +461,11 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 		csv->sep_char = *ptr;
 	    }
 
-	csv->eol       = "";
+	csv->eol       = (byte *)"";
 	csv->eol_is_cr = 0;
 	csv->eol_len   = 0;
 	if ((svp = hv_fetchs (self, "eol",         FALSE)) && *svp && SvOK (*svp)) {
-	    csv->eol = SvPV (*svp, len);
+	    csv->eol = (byte *)SvPV (*svp, len);
 	    csv->eol_len = len;
 	    if (len == 1 && *csv->eol == CH_CR)
 		csv->eol_is_cr = 1;
@@ -332,10 +477,9 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	    csv->types_len = len;
 	    }
 
-	csv->is_bound = 0;
-	if ((svp = hv_fetchs (self, "_is_bound", FALSE)) && *svp && SvOK(*svp)) {
+	csv->is_bound  = 0;
+	if ((svp = hv_fetchs (self, "_is_bound", FALSE)) && *svp && SvOK(*svp))
 	    csv->is_bound = SvIV(*svp);
-	    }
 
 	csv->binary			= bool_opt ("binary");
 	csv->keep_meta_info		= bool_opt ("keep_meta_info");
@@ -348,6 +492,11 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	csv->empty_is_undef		= bool_opt ("empty_is_undef");
 	csv->verbatim			= bool_opt ("verbatim");
 	csv->auto_diag			= bool_opt ("auto_diag");
+
+	sv_cache = newSVpvn ("", CACHE_SIZE);
+	csv->cache = (byte *)SvPVX (sv_cache);
+	memset (csv->cache, 0, CACHE_SIZE);
+	SvREADONLY_on (sv_cache);
 
 	csv->cache[CACHE_ID_quote_char]			= csv->quote_char;
 	csv->cache[CACHE_ID_escape_char]		= csv->escape_char;
@@ -368,16 +517,20 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	csv->cache[CACHE_ID_eol_is_cr]			= csv->eol_is_cr;
 	csv->cache[CACHE_ID_eol_len]			= csv->eol_len;
 	if (csv->eol_len > 0 && csv->eol_len < 8 && csv->eol)
-	    strcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol);
+	    memcpy ((char *)&csv->cache[CACHE_ID_eol], csv->eol, csv->eol_len);
 	csv->cache[CACHE_ID_has_types]			= csv->types ? 1 : 0;
+	csv->cache[CACHE_ID__has_ahead]			= csv->has_ahead = 0;
 	csv->cache[CACHE_ID__is_bound    ] = (csv->is_bound & 0xFF000000) >> 24;
 	csv->cache[CACHE_ID__is_bound + 1] = (csv->is_bound & 0x00FF0000) >> 16;
 	csv->cache[CACHE_ID__is_bound + 2] = (csv->is_bound & 0x0000FF00) >>  8;
 	csv->cache[CACHE_ID__is_bound + 3] = (csv->is_bound & 0x000000FF);
 
-	if ((csv->tmp = newSVpvn ((char *)csv->cache, CACHE_SIZE)))
-	    (void)hv_store (self, "_CACHE", 6, csv->tmp, 0);
+	(void)hv_store (self, "_CACHE", 6, sv_cache, 0);
 	}
+
+    csv->utf8 = 0;
+    csv->size = 0;
+    csv->used = 0;
 
     if (csv->is_bound) {
 	if ((svp = hv_fetchs (self, "_BOUND_COLUMNS", FALSE)) && _is_arrayref (*svp))
@@ -385,8 +538,6 @@ static void cx_SetupCsv (pTHX_ csv_t *csv, HV *self, SV *pself)
 	else
 	    csv->is_bound = 0;
 	}
-    csv->utf8 = 0;
-    csv->used = 0;
     } /* SetupCsv */
 
 #define Print(csv,dst)		cx_Print (aTHX_ csv, dst)
@@ -518,7 +669,7 @@ static int cx_Combine (pTHX_ csv_t *csv, SV *dst, AV *fields)
 	}
     if (csv->eol_len) {
 	STRLEN	len = csv->eol_len;
-	char   *ptr = csv->eol;
+	byte   *ptr = csv->eol;
 
 	while (len--)
 	    CSV_PUT (csv, dst, *ptr++);
@@ -604,11 +755,9 @@ static int cx_CsvGet (pTHX_ csv_t *csv, SV *src)
     }
 
 #define CSV_GET					\
-    ((c_ungetc != EOF)				\
-	? c_ungetc				\
-	: ((csv->used < csv->size)		\
-	    ? ((byte)csv->bptr[(csv)->used++])	\
-	    : CsvGet (csv, src)))
+    ((csv->used < csv->size)			\
+	? ((byte)csv->bptr[csv->used++])	\
+	: CsvGet (csv, src))
 
 #define AV_PUSH {						\
     *SvEND (sv) = (char)0;					\
@@ -687,7 +836,6 @@ static char str_parsed[40];
 static int cx_Parse (pTHX_ csv_t *csv, SV *src, AV *fields, AV *fflags)
 {
     int		 c, f = 0;
-    int		 c_ungetc		= EOF;
     int		 waitingForField	= 1;
     SV		*sv			= NULL;
     STRLEN	 len;
@@ -802,6 +950,14 @@ restart:
 		    goto restart;
 		    }
 
+		if (csv->useIO && csv->eol_len == 0 && !is_csv_binary (c2)) {
+		    set_eol_is_cr (csv);
+		    c = CH_NL;
+		    csv->used--;
+		    csv->has_ahead++;
+		    goto restart;
+		    }
+
 		csv->used--;
 		ERROR_INSIDE_FIELD (2031);
 		}
@@ -824,6 +980,14 @@ restart:
 		c2 = CSV_GET;
 
 		if (c2 == CH_NL) {
+		    AV_PUSH;
+		    return TRUE;
+		    }
+
+		if (csv->useIO && csv->eol_len == 0 && !is_csv_binary (c2)) {
+		    set_eol_is_cr (csv);
+		    csv->used--;
+		    csv->has_ahead++;
 		    AV_PUSH;
 		    return TRUE;
 		    }
@@ -939,6 +1103,14 @@ restart:
 			    AV_PUSH;
 			    return TRUE;
 			    }
+
+			if (csv->useIO && csv->eol_len == 0 && !is_csv_binary (c3)) {
+			    set_eol_is_cr (csv);
+			    AV_PUSH;
+			    csv->used--;
+			    csv->has_ahead++;
+			    return TRUE;
+			    }
 			}
 
 		    if (csv->allow_loose_escapes && csv->escape_char == csv->quote_char) {
@@ -1005,8 +1177,8 @@ restart:
 	    } /* ESC char */
 	else {
 #if MAINT_DEBUG > 1
-	    fprintf (stderr, "# %d/%d/%02x pos %d = === '%c' '%c'\n",
-		waitingForField ? 1 : 0, sv ? 1 : 0, f, spl, c, c_ungetc);
+	    fprintf (stderr, "# %d/%d/%02x pos %d = === '%c'\n",
+		waitingForField ? 1 : 0, sv ? 1 : 0, f, spl, c);
 #endif
 	    if (waitingForField) {
 		if (csv->allow_whitespace && is_whitespace (c)) {
@@ -1076,12 +1248,19 @@ restart:
 static int cx_xsParse (pTHX_ SV *self, HV *hv, AV *av, AV *avf, SV *src, bool useIO)
 {
     csv_t	csv;
-    int		result;
+    int		result, ahead = 0;
 
     SetupCsv (&csv, hv, self);
+
     if ((csv.useIO = useIO)) {
 	csv.tmp  = NULL;
-	csv.size = 0;
+	if ((ahead = csv.has_ahead)) {
+	    SV **svp;
+	    if ((svp = hv_fetchs (hv, "_AHEAD", FALSE)) && *svp) {
+		csv.bptr = SvPV (csv.tmp = *svp, csv.size);
+		csv.used = 0;
+		}
+	    }
 	}
     else {
 	csv.tmp  = src;
@@ -1089,12 +1268,23 @@ static int cx_xsParse (pTHX_ SV *self, HV *hv, AV *av, AV *avf, SV *src, bool us
 	csv.bptr = SvPV (src, csv.size);
 	}
     (void)hv_delete (hv, "_ERROR_INPUT", 12, G_DISCARD);
+
     result = Parse (&csv, src, av, avf);
-    if (csv.useIO & useIO_EOF)
-	(void)hv_store (hv, "_EOF", 4, &PL_sv_yes, 0);
-    else
-	(void)hv_store (hv, "_EOF", 4, &PL_sv_no,  0);
+
+    (void)hv_store (hv, "_EOF", 4, &PL_sv_no,  0);
     if (csv.useIO) {
+	if (csv.tmp && csv.used < csv.size && csv.has_ahead) {
+	    SV *sv = newSVpvn (csv.bptr + csv.used, csv.size - csv.used);
+	    (void)hv_delete (hv, "_AHEAD", 6, G_DISCARD);
+	    (void)hv_store  (hv, "_AHEAD", 6, sv, 0);
+	    }
+	else {
+	    csv.has_ahead = 0;
+	    if (csv.useIO & useIO_EOF)
+		(void)hv_store (hv, "_EOF", 4, &PL_sv_yes, 0);
+	    }
+	csv.cache[CACHE_ID__has_ahead] = csv.has_ahead;
+
 	if (csv.keep_meta_info) {
 	    (void)hv_delete (hv, "_FFLAGS", 7, G_DISCARD);
 	    (void)hv_store  (hv, "_FFLAGS", 7, newRV_noinc ((SV *)avf), 0);
@@ -1259,3 +1449,29 @@ getline (self, io)
 	: &PL_sv_undef;
     XSRETURN (1);
     /* XS getline */
+
+void
+_cache_set (self, idx, val)
+    SV		*self
+    int		 idx
+    SV		*val
+
+  PPCODE:
+    HV	*hv;
+
+    CSV_XS_SELF;
+    xs_cache_set (hv, idx, val);
+    XSRETURN (1);
+    /* XS _cache_diag */
+
+void
+_cache_diag (self)
+    SV		*self
+
+  PPCODE:
+    HV	*hv;
+
+    CSV_XS_SELF;
+    xs_cache_diag (hv);
+    XSRETURN (1);
+    /* XS _cache_diag */
